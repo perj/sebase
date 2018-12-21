@@ -1,0 +1,12 @@
+# Copyright 2018 Schibsted
+
+INSTALL(/bin
+	scripts[
+		contains
+		match
+	]
+	specialsrcs[
+		concat:contains.pl:contains
+		concat:match.pl:match
+	]
+)

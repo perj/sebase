@@ -1,0 +1,70 @@
+# Copyright 2018 Schibsted
+#
+# This is the library that contains functionality that describes
+# the core platform.
+
+LIB(sebase-core
+	srcs[
+		create_socket.c ctrl_header.gperf daemon.c etcdclient.c
+		fd_pool.c fd_pool_url_scheme.gperf fd_pool_sd.c http_fd_pool.c
+		log_event.c parse_query_string.c platform_app.c
+		sd_command.gperf sd_queue.c sd_registry.c
+	]
+	# Controllers currently require epoll and eventfd.
+	srcs::linux[
+		controller-log.c controller-stats.c controller.c
+	]
+	incprefix[sbp]
+	includes[
+		create_socket.h daemon.h etcdclient.h fd_pool.h
+		fd_pool_sd.h http_fd_pool.h log_event.h parse_query_string.h
+		platform_app.h sd_queue.h sd_registry.h
+	]
+	includes::linux[
+		controller.h
+	]
+	specialsrcs[
+		gperf_switch:controller.c:ctrl_header.gperf
+		gperf_switch:fd_pool.c:fd_pool_url_scheme.gperf
+		gperf_switch:fd_pool_sd.c:sd_command.gperf
+	]
+	libs[
+		curl sebase-vtree sebase-plog
+	]
+	libs::!system_http_parser[
+		sebase-http-parser
+	]
+	libs::system_http_parser[
+		http_parser
+	]
+	libs::!system_xxhash[
+		sebase-xxhash
+	]
+	libs::system_xxhash[
+		xxhash
+	]
+)
+
+# Separated becuse libicu is quite big and not everyone might want to link it.
+LIB(sebase-core-icu
+	srcs[
+		levenshtein.c unicode.c
+	]
+	incprefix[sbp]
+	includes[
+		levenshtein.h unicode.h
+	]
+	libs[
+		sebase-core icuuc
+	]
+)
+
+LINKERSET_LIB(sebase-sd-etcd
+	srcs[sd_etcd.c]
+	libs[sebase-core]
+)
+
+LINKERSET_LIB(sebase-sd-reload
+	srcs[sd_reload.c]
+	libs[sebase-core]
+)

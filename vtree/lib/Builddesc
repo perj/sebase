@@ -1,0 +1,14 @@
+# Copyright 2018 Schibsted
+
+LIB(sebase-vtree
+	srcs[
+		bconf.c bconf_vtree.c config.c json_vtree.c settings.c vtree.c
+		vtree_literal.c vtree_value.c
+	]
+	incprefix[sbp]
+	includes[
+		bconf.h bconfig.h json_vtree.h settings.h vtree.h
+		vtree_literal.h vtree_value.h
+	]
+	libs[sebase-util yajl]
+)

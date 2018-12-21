@@ -1,0 +1,6 @@
+# Copyright 2018 Schibsted
+
+PROG(stat_message_test
+	srcs[stat_messages.c]
+	libs[sebase-util]
+)

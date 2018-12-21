@@ -1,0 +1,21 @@
+// Copyright 2018 Schibsted
+
+#ifndef GOINIT_H
+#define GOINIT_H
+
+#include <stdbool.h>
+
+#define GO_INIT_LIB_SYMBOL _rt0_%GOARCH%_%GOOS%_lib
+
+/*
+ * Please note: These MUST be the original argc and argv as passed to
+ * the main function. The Go runtime will iterate past the end of argv
+ * to access some private linux specific data there, and will crash if
+ * it's not present.
+ */
+bool init_go_runtime(int argc, char *const *argv);
+
+/* Returns true if a Go runtime will be started by init_go_runtime. */
+bool has_go_runtime(void);
+
+#endif /*GOINIT_H*/

@@ -1,0 +1,15 @@
+# Copyright 2018 Schibsted
+
+INSTALL(regress/simple
+	specialsrcs[
+		prog_to_rdep:$simple_test_programs:simple_targets.mk
+		gotest_to_rdep::gotests.mk:gotests=$_gotest
+	]
+	conf[
+		simple_targets.mk
+		gotests.mk
+	]
+	extravars[
+		rules.ninja
+	]
+)

@@ -1,0 +1,77 @@
+/* Copyright 2018 Schibsted */
+
+testsuite:before {
+	display: block;
+	white-space: pre;
+	content: "Testsuite " attr(name)
+		"\0A"
+		"\0A" "Tests: " attr(tests)
+		"\0A" "Failures: " attr(failures)
+		"\0A" "Errors: " attr(errors)
+		"\0A" "Skipped: " attr(skipped)
+		"\0A" "Time: " attr(time) " ms";
+	margin: 20px;
+	font-size: 1.5em;
+}
+
+testsuite {
+	display: block;
+	margin: 20px;
+}
+
+testcase {
+	display: block;
+	margin: 20px;
+}
+
+testcase:before {
+	display: block;
+	content: "Testcase " attr(name);
+	font-size: 1.5em;
+	padding-bottom: 20px;
+}
+
+testcase:empty {
+	display: none;
+}
+
+logs {
+	display: block;
+	margin: 20px;
+}
+
+logs:before {
+	display: block;
+	content: "Logs";
+	font-size: 1.5em;
+	padding-bottom: 20px;
+}
+
+failure {
+	display: block;
+	border: 1px solid black;
+	background: #EEEEEE;
+	white-space: pre;
+}
+
+failure:before {
+	display: block;
+	content: "Failure";
+	font-weight: bold;
+	padding-bottom: 1em;
+}
+
+log {
+	display: block;
+	border: 1px solid black;
+	background: #EEEEEE;
+	white-space: pre;
+	margin-bottom: 20px;
+}
+
+log:before {
+	display: block;
+	content: attr(name);
+	font-weight: bold;
+	padding-bottom: 1em;
+}

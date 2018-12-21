@@ -1,0 +1,25 @@
+# Copyright 2018 Schibsted
+
+httpd_listen.port=0
+httpd_listen.nthreads=3
+httpd_listen.stat_counters_prefix=counts
+
+httpd_listen.acl.0.method=GET
+httpd_listen.acl.0.path=/stop
+httpd_listen.acl.0.action=allow
+
+httpd_listen.acl.1.method=GET
+httpd_listen.acl.1.path=/no_substring_match
+httpd_listen.acl.1.action=allow
+
+httpd_listen.acl.2.method=GET
+httpd_listen.acl.2.path=/substring_match/
+httpd_listen.acl.2.action=allow
+
+httpd_listen.acl.3.method=*
+httpd_listen.acl.3.path=/any_method
+httpd_listen.acl.3.action=allow
+
+httpd_listen.acl.4.method=GET
+httpd_listen.acl.4.path=/only_get
+httpd_listen.acl.4.action=allow

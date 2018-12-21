@@ -1,0 +1,20 @@
+# Copyright 2018 Schibsted
+
+LIB(sebase-http-parser
+	enabled::!system_http_parser[]
+	srcs[
+		http_parser.c
+	]
+	incprefix[sbp]
+	includes[
+		http_parser.h
+	]
+)
+
+PROG(http_parser_test
+	enabled::!system_http_parser[]
+	srcs[http_parser_test.c]
+	libs[sebase-http-parser]
+	cwarnflags[-Wno-unused-parameter -Wno-shadow]
+	collect_target_var[simple_test_programs]
+)

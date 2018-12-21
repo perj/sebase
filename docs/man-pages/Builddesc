@@ -1,0 +1,28 @@
+# Copyright 2018 Schibsted
+
+INSTALL(/man/man1
+	enabled::man[]
+	specialsrcs[
+		ronn:acl-proxy.1.ronn.md:acl-proxy.1
+		ronn:cert-sleep.1.ronn.md:cert-sleep.1
+		ronn:etcd_service.1.ronn.md:etcd_service.1
+		ronn:getbconfvars.1.ronn.md:getbconfvars.1
+		ronn:git-subproj.1.ronn.md:git-subproj.1
+		ronn:keyid.1.ronn.md:keyid.1
+		ronn:watch-service.1.ronn.md:watch-service.1
+	]
+	conf[
+		acl-proxy.1 cert-sleep.1 etcd_service.1 getbconfvars.1
+		git-subproj.1 keyid.1 watch-service.1
+	]
+)
+
+INSTALL(/man/man7
+	enabled::man[]
+	specialsrcs[
+		ronn:auth.7.ronn.md:auth.7
+	]
+	conf[
+		auth.7
+	]
+)

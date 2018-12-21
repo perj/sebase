@@ -1,0 +1,6 @@
+# Copyright 2018 Schibsted
+
+PROG(tcpsend
+	srcs[tcpsend.c]
+	libs[sebase-util]
+)

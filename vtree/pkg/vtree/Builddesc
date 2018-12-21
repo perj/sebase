@@ -1,0 +1,11 @@
+# Copyright 2018 Schibsted
+
+LIB(sebase-go-vtree
+	libs[sebase-vtree]
+)
+
+GOTEST(sebase-vtree
+	enabled::!nocgo[]
+	libs[sebase-go-vtree]
+)
+

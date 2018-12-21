@@ -1,0 +1,6 @@
+# Copyright 2018 Schibsted
+
+PROG(bconf_test
+	srcs[bconf_test.c]
+	libs[sebase-vtree]
+)

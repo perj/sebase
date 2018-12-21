@@ -1,0 +1,7 @@
+# Copyright 2018 Schibsted
+
+MODULE(sysloghook
+	copts[-DSYSLOGHOOK_MICROSECONDS]
+	srcs[sysloghook.c]
+	libs[pthread]
+)

@@ -1,0 +1,5 @@
+# Copyright 2018 Schibsted
+
+LIB(sebase-go-sapp
+	libs[sebase-go-fdpool sebase-go-vtree]
+)

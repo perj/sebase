@@ -1,0 +1,9 @@
+# Copyright 2018 Schibsted
+
+rule prog_to_rdep
+    command = for a in $in ; do printf "REGRESS_TARGETS += generated-simple-test-`basename $$a`\ngenerated-simple-test-`basename $$a`:\n\t`basename $$a`\n" ; done > $out
+    description = Generate simple test makefile.
+
+rule gotest_to_rdep
+    command = for a in $gotests ; do printf "REGRESS_TARGETS += generated-gotest-`basename $$a`\ngenerated-gotest-`basename $$a`:\n\t(cd "'$${TOPDIR}'" ; ninja -f $buildpath/build.ninja $$a)\n" ; done > $out
+    description = Generate gotests makefile.

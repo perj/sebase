@@ -1,0 +1,6 @@
+# Copyright 2018 Schibsted
+
+PROG(vtree_json_vtree
+	srcs[vtree_json_vtree.c]
+	libs[sebase-vtree]
+)

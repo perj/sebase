@@ -1,0 +1,6 @@
+# Copyright 2018 Schibsted
+
+PROG(regress-http-fd-pool
+	srcs[*.c]
+	libs[sebase-core]
+)

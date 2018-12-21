@@ -1,0 +1,38 @@
+// Copyright 2018 Schibsted
+
+syntax = "proto2";
+
+// NOTE: After you modify this file, you have to run go generate to regenerate
+// the corresponding plog.pb.go file and check in that file as well. This is
+// currently not done automatically.
+
+package plogproto;
+
+enum CtxType {
+	log = 0;
+	state = 1;
+	count = 2;
+	dict = 3;
+	list = 4;
+}
+
+message plog {
+	optional uint64 ctx_id = 1; // Required, must be > 0.
+
+	// All these are optional, more than one can be set.
+	// E.g. all three can be used together to send a whole context in a single message.
+	optional open_context open = 2;
+	repeated plog_message msg = 3;
+	optional bool close = 4;
+}
+
+message open_context {
+	optional CtxType ctxtype = 1; // Required
+	repeated string key = 2; // At least 1, although first entry is ignored if parent context is a list.
+	optional uint64 parent_ctx_id = 3; // Required for dict/list, must not be used for others.
+}
+
+message plog_message {
+	optional string key = 2; // Ignored for list contexts, required for others.
+	optional bytes value = 3; // Json data
+}

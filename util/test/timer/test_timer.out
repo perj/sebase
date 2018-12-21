@@ -1,0 +1,119 @@
+First run - no delay, no previous delta
+Timer: test_timer#subtest.count:1
+Timer: test_timer#subtest.counter:0
+Timer: test_timer#subtest.total:0..*
+Delta: test_timer#subtest.count:1
+Delta: test_timer#subtest.counter:0
+Delta: test_timer#subtest.total:0..*
+
+Timer: test_timer#the first function/FIRST.count:5
+Timer: test_timer#the first function/FIRST.counter:0
+Timer: test_timer#the first function/FIRST.total:0..*
+Timer: test_timer#the first function/FIRST.min:0..*
+Timer: test_timer#the first function/FIRST.max:0..*
+Timer: test_timer#the first function/FIRST.average:0..*
+Delta: test_timer#the first function/FIRST.count:5
+Delta: test_timer#the first function/FIRST.counter:0
+Delta: test_timer#the first function/FIRST.total:0..*
+
+Timer: test_timer#the second function/SECOND.count:5
+Timer: test_timer#the second function/SECOND.counter:42
+Timer: test_timer#the second function/SECOND.total:0..*
+Timer: test_timer#the second function/SECOND.min:0..*
+Timer: test_timer#the second function/SECOND.max:0..*
+Timer: test_timer#the second function/SECOND.average:0..*
+Delta: test_timer#the second function/SECOND.count:5
+Delta: test_timer#the second function/SECOND.counter:42
+Delta: test_timer#the second function/SECOND.total:0..*
+
+Timer: test_timer.count:1
+Timer: test_timer.counter:0
+Timer: test_timer.total:0..*
+Delta: test_timer.count:1
+Delta: test_timer.counter:0
+Delta: test_timer.total:0..*
+
+
+Second run - 500ms delay on SECOND
+Timer: test_timer#subtest.count:2
+Timer: test_timer#subtest.counter:0
+Timer: test_timer#subtest.total:0..*
+Timer: test_timer#subtest.min:0..*
+Timer: test_timer#subtest.max:0..*
+Timer: test_timer#subtest.average:0..*
+Delta: test_timer#subtest.count:1
+Delta: test_timer#subtest.counter:0
+Delta: test_timer#subtest.total:0..*
+
+Timer: test_timer#the first function/FIRST.count:8
+Timer: test_timer#the first function/FIRST.counter:0
+Timer: test_timer#the first function/FIRST.total:0..*
+Timer: test_timer#the first function/FIRST.min:0..*
+Timer: test_timer#the first function/FIRST.max:0..*
+Timer: test_timer#the first function/FIRST.average:0..*
+Delta: test_timer#the first function/FIRST.count:3
+Delta: test_timer#the first function/FIRST.counter:0
+Delta: test_timer#the first function/FIRST.total:0..*
+
+Timer: test_timer#the second function/SECOND.count:8
+Timer: test_timer#the second function/SECOND.counter:88
+Timer: test_timer#the second function/SECOND.total:1.5.*
+Timer: test_timer#the second function/SECOND.min:0..*
+Timer: test_timer#the second function/SECOND.max:0.5.*
+Timer: test_timer#the second function/SECOND.average:0..*
+Delta: test_timer#the second function/SECOND.count:3
+Delta: test_timer#the second function/SECOND.counter:46
+Delta: test_timer#the second function/SECOND.total:1.5.*
+
+Timer: test_timer.count:2
+Timer: test_timer.counter:0
+Timer: test_timer.total:1.5.*
+Timer: test_timer.min:0..*
+Timer: test_timer.max:1.5.*
+Timer: test_timer.average:0.*
+Delta: test_timer.count:1
+Delta: test_timer.counter:0
+Delta: test_timer.total:1.5.*
+
+
+Third run - 100ms delay on SECOND
+Timer: test_timer#subtest.count:3
+Timer: test_timer#subtest.counter:0
+Timer: test_timer#subtest.total:0..*
+Timer: test_timer#subtest.min:0..*
+Timer: test_timer#subtest.max:0..*
+Timer: test_timer#subtest.average:0..*
+Delta: test_timer#subtest.count:1
+Delta: test_timer#subtest.counter:0
+Delta: test_timer#subtest.total:0..*
+
+Timer: test_timer#the first function/FIRST.count:12
+Timer: test_timer#the first function/FIRST.counter:0
+Timer: test_timer#the first function/FIRST.total:0..*
+Timer: test_timer#the first function/FIRST.min:0..*
+Timer: test_timer#the first function/FIRST.max:0..*
+Timer: test_timer#the first function/FIRST.average:0..*
+Delta: test_timer#the first function/FIRST.count:4
+Delta: test_timer#the first function/FIRST.counter:0
+Delta: test_timer#the first function/FIRST.total:0..*
+
+Timer: test_timer#the second function/SECOND.count:12
+Timer: test_timer#the second function/SECOND.counter:1.*
+Timer: test_timer#the second function/SECOND.total:1.9.*
+Timer: test_timer#the second function/SECOND.min:0..*
+Timer: test_timer#the second function/SECOND.max:0.5.*
+Timer: test_timer#the second function/SECOND.average:0.*
+Delta: test_timer#the second function/SECOND.count:4
+Delta: test_timer#the second function/SECOND.counter:12
+Delta: test_timer#the second function/SECOND.total:0.4.*
+
+Timer: test_timer.count:3
+Timer: test_timer.counter:0
+Timer: test_timer.total:1.9.*
+Timer: test_timer.min:0..*
+Timer: test_timer.max:1.5.*
+Timer: test_timer.average:0..*
+Delta: test_timer.count:1
+Delta: test_timer.counter:0
+Delta: test_timer.total:0.4.*
+

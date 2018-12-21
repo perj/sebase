@@ -1,0 +1,8 @@
+Read headers and discard body from http://localhost:.+/ok... OK
+Response:
+HTTP/1.1 200 OK
+Date: .*
+Content-Length: 11
+Content-Type: text/plain; charset=utf-8
+
+

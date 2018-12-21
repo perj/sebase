@@ -1,0 +1,6 @@
+# Copyright 2018 Schibsted
+
+PROG(test_latin1_to_utf8
+	srcs[test_latin1_to_utf8.c]
+	libs[sebase-util]
+)

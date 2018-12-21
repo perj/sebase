@@ -1,0 +1,72 @@
+{
+	"*": {
+		"common": {
+			"category": {
+				"7": {
+					"price": "20"
+				},
+				"8": {
+					"price": "20",
+					"test": "apa"
+				},
+				"9": {
+					"price": "20"
+				}
+			},
+			"seo": {
+				"cat": {
+					"number": {
+						"Дома": "3",
+						"Домашні_тварини": "4030"
+					}
+				}
+			}
+		},
+		"merge": {
+			"b": "4",
+			"c": "5",
+			"sub": {
+				"b": "4",
+				"c": "5",
+				"d": "6"
+			}
+		}
+	},
+	"host": {
+		"common": {
+			"category": {
+				"7": {
+					"price": "20"
+				},
+				"8": {
+					"price": "20",
+					"test": "apa"
+				},
+				"9": {
+					"price": "20"
+				}
+			}
+		},
+		"fnargel": {
+			"category": {
+				"7": {
+					"price": "20"
+				}
+			}
+		}
+	},
+	"merge": {
+		"merge": {
+			"a": "1",
+			"b": "2",
+			"sub": {
+				"a": "1",
+				"b": "2",
+				"c": "3"
+			}
+		}
+	},
+	"utf8_value": "åäö",
+	"weird_characters_in_value": "Test JSON escaping \n\u000d\u0009\"\\"
+}
+host.common.category.8.test as JSON: "apa"

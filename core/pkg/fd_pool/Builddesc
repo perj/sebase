@@ -1,0 +1,9 @@
+# Copyright 2018 Schibsted
+
+LIB(sebase-go-fdpool
+	libs[sebase-core]
+)
+
+GOTEST(sebase-fd_pool
+	libs[sebase-go-fdpool]
+)

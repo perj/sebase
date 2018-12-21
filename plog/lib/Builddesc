@@ -1,0 +1,28 @@
+# Copyright 2018 Schibsted
+
+LIB(sebase-plog
+	srcs[
+		*.c
+		plog.pb-c.c
+	]
+	incprefix[sbp]
+	includes[
+		logging.h plog.h
+	]
+	libs[
+		protobuf-c pthread sebase-util
+	]
+	libs::linux[
+		dl
+	]
+	libs::openbsd[
+		execinfo
+	]
+	specialsrcs[
+		protoc-c:../internal/pkg/plogproto/plog.proto:plog.pb-c.c
+		phony:plog.pb-c.c:plog.pb-c.h
+	]
+	deps[
+		plog.c:plog.pb-c.h
+	]
+)

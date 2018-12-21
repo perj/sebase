@@ -1,0 +1,41 @@
+# Copyright 2018 Schibsted
+
+# sapp-test-server configuration file
+
+loglevel=debug
+
+# Custom ACL
+acl.1.method=GET
+acl.1.path=/allow_get
+acl.1.action=allow
+
+acl.2.method=GET
+acl.2.path=/deny_remote_addr
+acl.2.remote_addr=1.1.1.1
+acl.2.action=allow
+
+acl.3.method=GET
+acl.3.path=/client_cert_required
+acl.3.issuer.cn=*
+acl.3.action=allow
+
+acl.4.method=GET
+acl.4.path=/no_substring_match
+acl.4.action=allow
+
+acl.5.method=GET
+acl.5.path=/substring_match/
+acl.5.action=allow
+
+# We must allow /healthcheck otherwise the service will be down in SD.
+acl.10.method=GET
+acl.10.path=/healthcheck
+acl.10.action=allow
+
+# Allow /stop to make regress-stopper work.
+acl.11.method=GET
+acl.11.path=/stop
+acl.11.action=allow
+
+cacert.path=.ca.cert.pem
+cert.command=./gencert.sh sapp-test-server-custom-acl.foobar

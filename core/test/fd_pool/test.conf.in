@@ -1,0 +1,14 @@
+# Copyright 2018 Schibsted
+
+test_udp.host.1.name=127.0.0.1
+test_udp.host.1.port=0
+
+# Entry 1 and 3 are meant to be unconnectable.
+test_conn_writev.host.1.name=127.0.0.240
+test_conn_writev.host.1.port=12345
+test_conn_writev.host.2.name=localhost
+test_conn_writev.host.2.port=0
+test_conn_writev.host.3.name=127.0.0.241
+test_conn_writev.host.3.port=12345
+# test_conn_writev.echo=1
+

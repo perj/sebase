@@ -1,0 +1,23 @@
+Initial buffer size=1024
+Wrote 255 bytes, string is 256 characters, allocation 1024 bytes.
+Wrote 256 bytes, string is 512 characters, allocation 1024 bytes.
+Wrote 256 bytes, string is 768 characters, allocation 1024 bytes.
+Buffer reallocated from 1024 to 1536 bytes.
+Wrote 256 bytes, string is 1024 characters, allocation 1536 bytes.
+Wrote 256 bytes, string is 1280 characters, allocation 1536 bytes.
+Buffer reallocated from 1536 to 2304 bytes.
+Wrote 256 bytes, string is 1536 characters, allocation 2304 bytes.
+Wrote 256 bytes, string is 1792 characters, allocation 2304 bytes.
+Wrote 256 bytes, string is 2048 characters, allocation 2304 bytes.
+Buffer reallocated from 2304 to 3456 bytes.
+Wrote 256 bytes, string is 2304 characters, allocation 3456 bytes.
+Wrote 256 bytes, string is 2560 characters, allocation 3456 bytes.
+Wrote 256 bytes, string is 2816 characters, allocation 3456 bytes.
+Wrote 256 bytes, string is 3072 characters, allocation 3456 bytes.
+Wrote 256 bytes, string is 3328 characters, allocation 3456 bytes.
+Buffer reallocated from 3456 to 5184 bytes.
+Wrote 256 bytes, string is 3584 characters, allocation 5184 bytes.
+Wrote 256 bytes, string is 3840 characters, allocation 5184 bytes.
+Wrote 256 bytes, string is 4096 characters, allocation 5184 bytes.
+Buffer length is 4096, string length is 4096
+buf_string tests complete.

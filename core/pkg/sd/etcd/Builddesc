@@ -1,0 +1,5 @@
+# Copyright 2018 Schibsted
+
+GOTEST(sebase-sdr-etcd
+	libs[sebase-go-vtree]
+)

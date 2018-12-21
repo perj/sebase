@@ -1,0 +1,11 @@
+	#
+	#	Comments == good
+	#
+a.x=1
+a.y=2#anchor
+include		cfg2
+include cfg3
+b.v=1
+b.v=$ENV{test}
+b.w=2
+b.w=$ENV{unset_env_var}

@@ -1,0 +1,19 @@
+# Copyright 2018 Schibsted
+
+COMPONENT([
+	bconf
+	config
+	vtree-json-vtree
+])
+
+PROG(vtree_literal_test
+	srcs[vtree_literal_test.c]
+	libs[sebase-vtree]
+	collect_target_var[simple_test_programs]
+)
+
+PROG(shadow_vtree_test
+	srcs[shadow_vtree_test.c]
+	libs[sebase-vtree]
+	collect_target_var[simple_test_programs]
+)

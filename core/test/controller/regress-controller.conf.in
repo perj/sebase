@@ -1,0 +1,5 @@
+# Copyright 2018 Schibsted
+
+httpd_listen.port=0
+httpd_listen.nthreads=3
+httpd_listen.stat_counters_prefix=counts

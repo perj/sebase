@@ -1,0 +1,77 @@
+Set 'x a'
+quite many NULL
+y b NULL
+x a First value
+
+Overwrite 'x a'
+quite many NULL
+y b NULL
+x a Second value
+
+Set 'y b'
+quite many NULL
+y b A million mysterious monkeys meticulously making merry make-magic
+x a Second value
+
+Set using PRINTF 'y b'
+quite many NULL
+y b Splendid spoons
+x a Second value
+
+Overwrite using PRINTF 'y b'
+quite many NULL
+y b Think Blue
+x a Second value
+
+Overwrite SET using PRINTF 'x a'
+quite many NULL
+y b Think Blue
+x a Count Two
+
+PRINTF without arguments 'x a'
+quite many NULL
+y b Think Blue
+x a No args
+
+Allocating one dynamic message
+quite many NULL
+y b Think Blue
+x a No args
+dynamic message one NULL
+
+Set dynamic message
+quite many NULL
+y b Think Blue
+x a No args
+dynamic message one First dynamic message
+
+Overwrite dynamic message
+quite many NULL
+y b Think Blue
+x a No args
+dynamic message one Second dynamic message
+
+Allocating another dynamic message
+quite many NULL
+y b Think Blue
+x a No args
+dynamic message one Second dynamic message
+dynamic message two NULL
+
+Set second dynamic message
+quite many NULL
+y b Think Blue
+x a No args
+dynamic message one Second dynamic message
+dynamic message two Another dynamic message
+
+Free first dynamic message
+quite many NULL
+y b Think Blue
+x a No args
+dynamic message two Another dynamic message
+
+Free second dynamic message
+quite many NULL
+y b Think Blue
+x a No args

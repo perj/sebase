@@ -1,0 +1,75 @@
+# Copyright 2018 Schibsted
+
+COMPONENT([
+	fd_pool
+	sapp
+]
+::linux[
+	controller
+	http-fd-pool
+])
+
+PROG(fd_pool_ipsplit_test
+	srcs[fd_pool_ipsplit_test.c fd_pool_url_scheme.gperf]
+	specialsrcs[
+		gperf_switch:../lib/fd_pool.c:fd_pool_url_scheme.gperf
+	]
+	libs[sebase-core]
+	collect_target_var[simple_test_programs]
+)
+
+PROG(fd_pool_test
+	srcs[fd_pool_test.c noaddrconfig.c fd_pool_url_scheme.gperf]
+	specialsrcs[
+		gperf_switch:../lib/fd_pool.c:fd_pool_url_scheme.gperf
+	]
+	libs[sebase-core]
+	collect_target_var[simple_test_programs]
+)
+
+PROG(fd_pool_sd_test
+	srcs[fd_pool_sd_test.c sd_command.gperf noaddrconfig.c fd_pool_url_scheme.gperf]
+	specialsrcs[
+		gperf_switch:../lib/fd_pool.c:fd_pool_url_scheme.gperf
+		gperf_switch:../lib/fd_pool_sd.c:sd_command.gperf
+	]
+	libs[sebase-core]
+	collect_target_var[simple_test_programs]
+)
+
+PROG(etcdclient_test
+	srcs[etcdclient_test.c noaddrconfig.c]
+	libs[sebase-core]
+	collect_target_var[simple_test_programs]
+)
+
+PROG(sd_etcd_test
+	srcs[sd_etcd_test.c]
+	libs[sebase-core sebase-sd-etcd]
+	collect_target_var[simple_test_programs]
+)
+
+PROG(sd_reload_test
+	srcs[sd_reload_test.c]
+	libs[sebase-core sebase-sd-reload]
+	collect_target_var[simple_test_programs]
+)
+
+PROG(daemon_startup_test
+	srcs[test_daemon_startup.c]
+	libs[sebase-core]
+	collect_target_var[simple_test_programs]
+)
+
+# XXX this could live in util/
+PROG(test_levenshtein
+	srcs[test_levenshtein.c]
+	libs[sebase-core-icu]
+	collect_target_var[simple_test_programs]
+)
+
+PROG(test_parse_query_string
+	srcs[test_parse_query_string.c]
+	libs[sebase-core]
+	collect_target_var[simple_test_programs]
+)

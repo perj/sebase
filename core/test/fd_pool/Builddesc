@@ -1,0 +1,12 @@
+# Copyright 2018 Schibsted
+
+PROG(regress_fd_pool_test
+	srcs[fd_pool_test.c]
+	libs[sebase-core]
+	copts[-O0]
+)
+
+INSTALL(/regress/common/fd_pool
+	scripts[test.conf]
+	srcs[test.conf.in]
+)

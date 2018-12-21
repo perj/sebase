@@ -1,0 +1,6 @@
+# Copyright 2018 Schibsted
+
+PROG(sd_start
+	srcs[sd_start.c]
+	libs[sebase-util]
+)

@@ -1,0 +1,61 @@
+# Copyright 2018 Schibsted
+
+COMPONENT([
+	buf_string
+	stat_messages
+	string-functions
+	timer
+	unicode
+	xerr
+]
+::linux[
+	http
+])
+
+PROG(sbalance_test
+	srcs[test_sbalance.c]
+	libs[sebase-util]
+	collect_target_var[simple_test_programs]
+)
+
+PROG(aes_test
+	srcs[test_aes.c]
+	libs[sebase-util]
+	collect_target_var[simple_test_programs]
+)
+
+PROG(aes_sign_test
+	srcs[test_aes_sign.c]
+	libs[sebase-util crypto]
+	collect_target_var[simple_test_programs]
+)
+
+PROG(go_src_test
+	enabled::!openbsd,!nocgo[]
+	srcs[go_src_test.c test.go]
+	libs[sebase-util pthread]
+	collect_target_var[simple_test_programs]
+)
+
+PROG(utf8_char_test
+	srcs[test_utf8_char.c]
+	libs[sebase-util]
+	collect_target_var[simple_test_programs]
+)
+
+PROG(stringmap_test
+	srcs[stringmap_test.c]
+	libs[sebase-util]
+	collect_target_var[simple_test_programs]
+)
+
+PROG(test_avl
+	srcs[test_avl.c]
+	libs[sebase-util]
+	collect_target_var[simple_test_programs]
+)
+
+PROG(stat_counter_test
+	srcs[test_stat_counter.c]
+	libs[sebase-util pthread]
+)

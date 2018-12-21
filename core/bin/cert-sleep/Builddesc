@@ -1,0 +1,8 @@
+# Copyright 2018 Schibsted
+
+GOPROG(cert-sleep
+	nocgo[]
+)
+
+GOTEST(cert-sleep
+)

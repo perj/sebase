@@ -1,0 +1,17 @@
+# Copyright 2018 Schibsted
+
+PROG(regress-controller
+	srcs[main.c]
+	libs[sebase-core]
+	libs::!system_sha[
+		sebase-sha
+	]
+	libs::system_sha,linux[
+		md
+	]
+)
+
+INSTALL(regress/controller
+	srcs[regress-controller.conf.in acl.conf.in]
+	conf[regress-controller.conf acl.conf]
+)

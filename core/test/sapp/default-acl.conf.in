@@ -1,0 +1,24 @@
+# Copyright 2018 Schibsted
+
+# sapp-test-server configuration file
+
+loglevel=debug
+
+# Default ACL
+# acl.1.method=*
+# acl.1.path=/
+# acl.1.remote_addr=::1
+# acl.1.action=allow
+
+# acl.2.method=*
+# acl.2.path=/
+# acl.2.remote_addr=127.0.0.1
+# acl.2.action=allow
+
+# acl.3.method=*
+# acl.3.path=/
+# acl.3.cert.cn=*
+# acl.3.action=allow
+
+cacert.path=.ca.cert.pem
+cert.command=./gencert.sh  sapp-test-server-default-acl.foobar

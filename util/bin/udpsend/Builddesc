@@ -1,0 +1,6 @@
+# Copyright 2018 Schibsted
+
+PROG(udpsend
+	srcs[udpsend.c]
+	libs[sebase-util]
+)

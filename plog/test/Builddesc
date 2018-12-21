@@ -1,0 +1,15 @@
+# Copyright 2018 Schibsted
+
+PROG(plog_test
+	srcs[plog_test.c]
+	libs[sebase-plog]
+	collect_target_var[simple_test_programs]
+	specialsrcs[
+		protoc-c:../internal/pkg/plogproto/plog.proto:plog.pb-c.c
+		phony:plog.pb-c.c:plog.pb-c.h
+	]
+	deps[
+		plog_test.c:plog.pb-c.h
+	]
+)
+

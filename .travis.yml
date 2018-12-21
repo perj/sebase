@@ -1,0 +1,17 @@
+# Copyright 2018 Schibsted
+dist: trusty
+language: c
+sudo: required
+
+# We need ipv6 support in docker, but it appears /etc/docker/docker.json is not read.
+before_install:
+  - sudo dockerd --host=unix:///var/run/docker.sock --host=tcp://0.0.0.0:2375 --storage-driver=aufs --ipv6 --fixed-cidr-v6="fd51:ed7f:79ea:4ba9::/64" > /tmp/dockerlog 2>&1 & sleep 5
+
+script:
+  - test/travis.sh
+
+after_failure:
+  - cat /tmp/dockerlog
+
+after_script:
+  - sudo killall dockerd

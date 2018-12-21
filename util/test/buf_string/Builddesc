@@ -1,0 +1,6 @@
+# Copyright 2018 Schibsted
+
+PROG(bufstring_test
+	srcs[bufstring_test.c]
+	libs[sebase-util]
+)

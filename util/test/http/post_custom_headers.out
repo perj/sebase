@@ -1,0 +1,7 @@
+POST three parameters and custom headers... OK
+Response:
+Foobar
+alpha: foo
+beta: bar
+gamma: baz
+

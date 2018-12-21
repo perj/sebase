@@ -1,0 +1,50 @@
+# Copyright 2018 Schibsted
+
+COMPONENT([
+	core/bin/acl-proxy
+	core/bin/cert-sleep
+	core/bin/etcd_service
+	core/bin/regress-runner
+	core/bin/regress-stopper
+	core/bin/sd-port
+	core/bin/watch-service
+	core/lib
+	core/pkg/acl
+	core/pkg/fd_pool
+	core/pkg/loghttp
+	core/pkg/sapp
+	core/pkg/sd/etcd
+	core/pkg/sd/sdr
+	docs/man-pages
+	plog/bin/plogd
+	plog/bin/plogger
+	plog/bin/regress-plog-writer
+	plog/internal/pkg/plogproto
+	plog/lib
+	plog/modules/sysloghook
+	plog/pkg/plog
+	util/bin/git-subproj
+	util/bin/keyid
+	util/bin/match
+	util/bin/sd_start
+	util/bin/tcpsend
+	util/bin/udpsend
+	util/lib
+	util/pkg/keyid
+	util/pkg/sbalance
+	vendor/http_parser
+	vendor/sha
+	vendor/xxhash
+	vtree/bin/getbconfvars
+	vtree/lib
+	vtree/pkg/bconf
+	vtree/pkg/vtree
+])
+
+COMPONENT(flavors[dev] [
+	core/test
+	plog/test
+	vtree/test
+	util/test
+	test/simple
+])
