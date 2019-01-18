@@ -5,7 +5,7 @@
 #include <assert.h>
 #include <inttypes.h>
 #include <string.h>
-#include <semaphore.h>
+#include "sbp/semcompat.h"
 #include <stdio.h>
 
 STAT_COUNTER_DECLARE(foo, "x", "a");
@@ -30,7 +30,7 @@ stat_cb(void *v, uint64_t count, const char **name) {
 	stat_seen++;
 }
 
-static sem_t startup_sem;
+static semaphore_t startup_sem;
 static pthread_rwlock_t thundering_herd = PTHREAD_RWLOCK_INITIALIZER;
 
 static void *
@@ -38,7 +38,7 @@ thr_run(void *v) {
 	uint64_t *dyn = v, *d2;
 	unsigned int i;
 	d2 = stat_counter_dynamic_alloc(2, "x", "d");
-	sem_post(&startup_sem);
+	semaphore_post(&startup_sem);
 	pthread_rwlock_rdlock(&thundering_herd);
 	for (i = 0; i < nrounds; i++) {
 		STATCNT_INC(&foo);
@@ -61,7 +61,7 @@ main(int argc, char **argv) {
 	dyncnt = stat_counter_dynamic_alloc(2, "x", "c");
 	d2 = stat_counter_dynamic_alloc(2, "x", "d");
 
-	sem_init(&startup_sem, 0, 0);
+	semaphore_init(&startup_sem, false, 0);
 	pthread_rwlock_wrlock(&thundering_herd);
 
 	for (i = 0; i < nthreads; i++) {
@@ -70,7 +70,7 @@ main(int argc, char **argv) {
 
 	/* Wait for all threads to start. */
 	for (i = 0; i < nthreads; i++) {
-		sem_wait(&startup_sem);
+		semaphore_wait(&startup_sem);
 	}
 	pthread_rwlock_unlock(&thundering_herd);
 	for (i = 0; i < nthreads; i++) {
