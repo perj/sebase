@@ -27,7 +27,7 @@ pthread_mutex_t tcd_mutex = PTHREAD_MUTEX_INITIALIZER;
 #ifdef __MACH__
 static mach_timebase_info_data_t timebase_info;
 static inline void timer_sub(uint64_t *tsp, uint64_t *usp, struct timespec *vsp) {
-	if (*usp < *tsp) {
+	if (*tsp < *usp) {
 		memset(vsp, 0, sizeof(*vsp));
 		return;
 	}
