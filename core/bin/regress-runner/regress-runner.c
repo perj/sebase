@@ -141,10 +141,11 @@ out(FILE *f, struct bconf_node *root) {
 		struct bconf_node *node = bconf_byindex(cases, i);
 		const char *result = bconf_get_string(node, "result") ?: "";
 		if (strcmp(result, "success") == 0) {
-			fprintf(f, "    <testcase time=\"%s\" classname=\"%s.%s\" name=\"%s\"/>\n",
+			fprintf(f, "    <testcase time=\"%s\" classname=\"%s.%s\" name=\"%s\"><output xml:space=\"preserve\"><![CDATA[%s]]></output></testcase>\n",
 					bconf_get_string(node, "duration"),
 					name, bconf_get_string(node, "type"),
-					bconf_get_string(node, "name"));
+					bconf_get_string(node, "name"),
+					bconf_get_string(node, "output"));
 		} else if (strcmp(result, "failed") == 0) {
 			fprintf(f, "    <testcase time=\"%s\" classname=\"%s.%s\" name=\"%s\">\n",
 					bconf_get_string(node, "duration"),

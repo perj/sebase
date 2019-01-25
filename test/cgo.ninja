@@ -1,0 +1,2 @@
+gobuild_flags="-tags sebase_cgo"
+gobuild_test_flags="-v"
