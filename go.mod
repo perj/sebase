@@ -33,7 +33,6 @@ require (
 	github.com/ugorji/go/codec v0.0.0-20180920200043-2c86ab75771c // indirect
 	github.com/xiang90/probing v0.0.0-20160813154853-07dd2e8dfe18 // indirect
 	golang.org/x/crypto v0.0.0-20180910181607-0e37d006457b // indirect
-	golang.org/x/net v0.0.0-20180906233101-161cd47e91fd
 	golang.org/x/time v0.0.0-20180412165947-fbb02b2291d2 // indirect
 	google.golang.org/grpc v1.15.0 // indirect
 	gopkg.in/airbrake/gobrake.v2 v2.0.9 // indirect

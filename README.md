@@ -95,18 +95,14 @@ a `COMPONENT` in your top level Builddesc.
 
 ### Building Go packages
 
-By default some of the Go packages will call the matching C libraries. For that
-to work they have to be able to find them, so building with sebuild is a
-requirement.
+The Go packages should work with go get etc. This repo is go module compatible.
 
-However, if you disable cgo with `CGO_ENABLED=0`, it should be possible to use
-the Go packages as normal with go build, go get etc. Additionally you can also
-use the go build tag `sebase_nocgo` for the same effect.
+You can optionally have to Go packages call the matching C libraries. This
+enables you to shares e.g. an fd pool between Go and C code.
 
-E.g. `go build -tags sebase_nocgo ./core/bin/sd-port`
-
-If you wish to build with cgo disabled and still use sebuild, also use the
-sebuild condition `nocgo` to disable compiling some test that require cgo.
+To do that you will have add `-tags sebuild_cgo` when using go build. The easiest
+way to do this in a consistent way is probably to use sebuild and a configvars
+file to set `gobuild_flags="-tags sebuild_cgo"` there.
 
 ## Maintainance Notice
 

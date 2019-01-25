@@ -1,6 +1,6 @@
 // Copyright 2018 Schibsted
 
-// +build cgo
+// +build cgo,sebase_cgo
 
 package bconf
 
