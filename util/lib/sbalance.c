@@ -193,11 +193,13 @@ sbalance_hash_init(struct sbalance_connection *sc, uint32_t hash) {
 	unsigned int i;
 	double tw = 0.0;
 
-#ifdef __GLIBC__
+#if defined(__GLIBC__)
 	struct drand48_data rd;
 	srand48_r(hash, &rd);
-#else
+#elif defined(__OpenBSD__)
 	srand48_deterministic(hash);
+#else
+	srand48(hash);
 #endif
 
 	for (i = 0; i < sb->sb_nserv; i++) {

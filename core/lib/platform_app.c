@@ -304,8 +304,11 @@ papp_start(struct papp *app, struct bconf_node *conf, bool will_fork) {
 	bool nobos = (app->flags & PAPP_NOBOS) || bconf_get_int(conf, "nobos");
 	bool foreground = !(app->flags & PAPP_DAEMON) || bconf_get_int(conf, "foreground");
 
+#ifndef __APPLE__
+	// No setproctitle available on OS X but also not needed.
 	if (!nobos && (app->flags & PAPP_PS_DISPLAY))
 		setproctitle("BOS");
+#endif
 
 	char ltbuf[256];
 	const char *logtag = bconf_get_string_default(conf, app->logtag_key ?: "log_tag", app->appl);

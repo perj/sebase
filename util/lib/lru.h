@@ -8,7 +8,7 @@
 #include <pthread.h>
 #include <stdbool.h>
 
-#include "tree.h"
+#include "avl.h"
 #include "queue.h"
 
 struct lru_entry {
@@ -23,7 +23,7 @@ struct lru_entry {
 
 	pthread_mutex_t mutex;
 	pthread_cond_t cond;
-	RB_ENTRY(lru_entry) te;
+	struct avl_node te;
 	TAILQ_ENTRY(lru_entry) tq;
 };
 

@@ -20,7 +20,6 @@
 #include "sbp/string_functions.h"
 #include "sbp/cached_regex.h"
 #include "sbp/popt.h"
-#include "sbp/tree.h"
 
 struct match_rec {
 	STAILQ_ENTRY(match_rec) next;

@@ -68,7 +68,7 @@ writelogline(FILE* file, const char* ident, const char* line)
 	strftime(timestr, sizeof(timestr), "%F %T", &tm);
 
 #ifdef SYSLOGHOOK_MICROSECONDS
-	res = fprintf(file, "%s.%06ld %s: %s\n", timestr, tv.tv_usec, ident, line);
+	res = fprintf(file, "%s.%06ld %s: %s\n", timestr, (long)tv.tv_usec, ident, line);
 #else
 	res = fprintf(file, "%s %s: %s\n", timestr, ident, line);
 #endif
@@ -472,6 +472,7 @@ void sysloghook_teardown(void){
 	closelog();
 }
 
+#ifndef __APPLE__
 /* Expose functions with a sysloghook_ prefix for dlsym'ing when the normal symbols are shadowed */
 
 void sysloghook_openlog(const char *ident, int option, int facility) __attribute__ ((alias("openlog")));
@@ -481,4 +482,5 @@ void sysloghook_closelog(void) __attribute__ ((alias("closelog")));
 // int  sysloghook_setlogmask(int mask) __attribute__ ((alias("setlogmask")));
 
 int  sysloghook_vsyslog_ident(const char *ident, const char *format, va_list ap) __attribute__ ((alias("vsyslog_ident")));
+#endif
 

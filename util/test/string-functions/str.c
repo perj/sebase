@@ -127,7 +127,7 @@ static int
 test_u(void) {
 	char buf[127];
 	xstrsignal(SIGPIPE, buf, sizeof(buf));
-	if (strcmp(buf, "Broken pipe")) {
+	if (!strstr(buf, "Broken pipe")) {
 		fprintf(stderr, "xstrsignal failed (%s)\n", buf);
 		return 1;
 	}

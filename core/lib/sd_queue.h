@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <sys/types.h>
 
 struct sd_value {
 	SLIST_ENTRY(sd_value) list;

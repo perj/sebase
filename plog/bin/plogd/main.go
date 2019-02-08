@@ -211,9 +211,9 @@ func main() {
 		sock = plogproto.DefaultSock
 	}
 	sockPath := flag.String("unix-socket", sock, "Listen to this unix socket (config file takes precedence). "+
-		"If file name is either plog.sock or plog-packet.sock, both will be created as unix/unixpacket versions.")
+		"If file name is either plog.sock or plog-packet.sock, both will be created as unix/unixpacket versions (not on OS X where unixpacket is not supported).")
 	sockPathNet := flag.String("unix-socktype", "", "Explicitly set the socket type for --unix-socket. "+
-		"Disables the automatic detection and creation of a second socket. Valid values: \"unix\", \"unixpacket\".")
+		"Disables the automatic detection and creation of a second socket. Valid values: \"unix\", \"unixpacket\" (OS X does not support unixpacket).")
 	httpAddr := flag.String("httpd", os.Getenv("PLOG_HTTPD_ADDR"), "Run HTTP server on this address")
 	pidfile := flag.String("pidfile", "", "Write PID to this file. Truncated early but the pid is written once the service is ready to accept answers")
 	subprog := flag.String("subprog", "", "If set, split the prog field on + and add the second value to the output with this key.")
@@ -265,10 +265,12 @@ func main() {
 
 	s.run(*httpAddr)
 
+	defPacket := false
 	var addrs [][2]string
 	if *sockPathNet != "" {
 		addrs = [][2]string{{*sockPathNet, *sockPath}}
 	} else if *sockPath == "plog.sock" || strings.HasSuffix(*sockPath, "/plog.sock") {
+		defPacket = true
 		addrs = [][2]string{
 			{"unix", *sockPath},
 			{"unixpacket", strings.TrimSuffix(*sockPath, "plog.sock") + "plog-packet.sock"},
@@ -279,7 +281,16 @@ func main() {
 			{"unix", strings.TrimSuffix(*sockPath, "plog-packet.sock") + "plog.sock"},
 		}
 	} else {
-		addrs = [][2]string{{"unixpacket", *sockPath}}
+		addrs = [][2]string{{"unix", *sockPath}}
+	}
+	if defPacket && runtime.GOOS == "darwin" {
+		// OS X does not support Unix packet. Ignore it if it was implicit.
+		for i := 0; i < len(addrs); i++ {
+			if addrs[i][0] == "unixpacket" {
+				addrs = append(addrs[0:i], addrs[i+1:]...)
+				i--
+			}
+		}
 	}
 	for _, a := range addrs {
 		l, err := listenUnix(a[0], a[1])

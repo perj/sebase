@@ -17,7 +17,7 @@ import (
 
 const (
 	// Default path to listen on / connect to.
-	DefaultSock = "/run/plog/plog-packet.sock"
+	DefaultSock = "/run/plog/plog.sock"
 )
 
 // A convenience listener type. Set seqpacket to true in case that's
@@ -48,7 +48,7 @@ func NewClientConn(sock string) (*Writer, error) {
 		if surl.Host != "" {
 			surl.Scheme = "tcp"
 		} else {
-			surl.Scheme = "unixpacket"
+			surl.Scheme = "unix"
 		}
 	}
 	if surl.Path == "" {

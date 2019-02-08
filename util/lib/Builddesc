@@ -15,9 +15,9 @@ LIB(sebase-util
 		cached_regex.h compat.h date_functions.h error_functions.h
 		fdgets.h file_util.h goinit.h hash.h heap.h http.h linker_set.h
 		lru.h macros.h memalloc_functions.h mempool.h popt.h queue.h
-		rcycle.h sbalance.h sbo.h scratch.h sock_util.h spinlock.h
-		stat_counters.h stat_messages.h string_functions.h stringmap.h
-		stringpool.h timer.h tls.h tree.h url.h utf8.h
+		rcycle.h sbalance.h sbo.h scratch.h semcompat.h sock_util.h
+		spinlock.h stat_counters.h stat_messages.h string_functions.h
+		stringmap.h stringpool.h timer.h tls.h url.h utf8.h
 	]
 	specialsrcs[
 		gperf_switch:popt.c:popt_boolval.gperf

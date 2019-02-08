@@ -18,25 +18,28 @@
 #if defined(__ELF__) || defined(__APPLE__)
 
 #ifdef __APPLE__
+#ifndef __LP64__
+#error "OS X code is only implemented for 64 bit architecture."
+#endif
 #include <mach-o/getsect.h>
 #include <mach-o/dyld.h>
 #define LINKER_SET_DECLARE(set, ptype)					\
 	ptype **__start_link_set_##set;					\
 	ptype **__stop_link_set_##set;					\
 	do {								\
-		const struct section *__temp_##set;			\
-		int idx = 0;						\
-		const struct mach_header *hdr;				\
-		while ((hdr = _dyld_get_image_header(idx)) &&		\
-		      !(__temp_##set = getsectbynamefromheader(hdr, 	\
+		const struct section_64 *__temp_##set;			\
+		int _idx = 0;						\
+		const struct mach_header_64 *hdr;				\
+		while ((hdr = (const struct mach_header_64*)_dyld_get_image_header(_idx)) &&	\
+		      !(__temp_##set = getsectbynamefromheader_64(hdr, 	\
 			      "__DATA",					\
-			      "lset_" #set))) idx++;		\
+			      "lset_" #set))) _idx++;		\
 		__start_link_set_##set = 				\
 		__temp_##set ? (ptype **)(__temp_##set->addr + 			\
-			   _dyld_get_image_vmaddr_slide(idx)) : NULL;		\
+			   _dyld_get_image_vmaddr_slide(_idx)) : NULL;		\
 		__stop_link_set_##set = __temp_##set ? (ptype **)(__temp_##set->addr +	\
 		    __temp_##set->size +				\
-		    _dyld_get_image_vmaddr_slide(idx)) : NULL;			\
+		    _dyld_get_image_vmaddr_slide(_idx)) : NULL;			\
 	} while (0)
 	
 #define LINKER_SET_START(set) (__start_link_set_##set)
