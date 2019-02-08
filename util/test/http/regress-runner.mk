@@ -1,7 +1,5 @@
 # Copyright 2018 Schibsted
 
-# Controllers only work on linux for now, needs epoll and eventfd.
-ifeq ($(findstring linux,${MAKE_HOST}),linux)
 print-tests:
 	@echo DEPEND: start-server
 	@echo TEST: get_discard get_keep post post_silly_headers
@@ -69,6 +67,3 @@ copy:
 https_get_discard:
 	bash -c 'export REGRESS_HTTPS_PORT=$$((49152 + $$RANDOM % 16384)) ; ${CMD_PREFIX} testhttp get_discard https://localhost:$$REGRESS_HTTPS_PORT/stats > .test.out'
 	match .test.out $@.out
-else
-print-tests:
-endif

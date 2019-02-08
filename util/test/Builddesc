@@ -2,14 +2,12 @@
 
 COMPONENT([
 	buf_string
+	http
 	stat_messages
 	string-functions
 	timer
 	unicode
 	xerr
-]
-::linux[
-	http
 ])
 
 PROG(sbalance_test

@@ -8,6 +8,7 @@
 #include "sbp/logging.h"
 #include <inttypes.h>
 #include <netdb.h>
+#include <string.h>
 #include <unistd.h>
 #include <time.h>
 
@@ -206,7 +207,9 @@ dump_qs_cb(struct ctrl_req *cr, struct stringmap *qs, void *data) {
 
 static int
 run(void) {
+#ifndef __APPLE__
 	setproctitle("initialize");
+#endif
 
 	struct ctrl_handler handlers[] = {
 		CONTROLLER_DEFAULT_HANDLERS,
@@ -327,7 +330,9 @@ run(void) {
 		nanosleep(&(const struct timespec){ .tv_nsec = 250 * 1000 * 1000 }, NULL);
 
 	startup_ready("regress_controller");
+#ifndef __APPLE__
 	setproctitle("running");
+#endif
 
 	semaphore_wait(&state.stop_sem);
 	ctrl_quit_stage_two(state.ctrl);

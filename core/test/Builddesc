@@ -3,8 +3,6 @@
 COMPONENT([
 	fd_pool
 	sapp
-]
-::linux[
 	controller
 	http-fd-pool
 ])

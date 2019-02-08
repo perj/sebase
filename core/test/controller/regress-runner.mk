@@ -1,7 +1,5 @@
 # Copyright 2018 Schibsted
 
-# Controllers only work on linux for now, needs epoll and eventfd.
-ifeq ($(findstring linux,${MAKE_HOST}),linux)
 print-tests:
 	@echo DEPEND: ${REGRESS_DEPEND}
 	@echo TEST: ${REGRESS_TARGETS}
@@ -47,7 +45,7 @@ REGRESS_TARGETS+=post-ctrl-only_get
 
 
 TESTOUT=${TESTDIR}/test.out
-PYTHON=python
+PYTHON=$$(command -v python || command -v python3)
 
 cleanup:
 	rm -f .template.out .testport
@@ -78,6 +76,3 @@ pctrl-%:
 
 enforce-min-nthreads:
 	curl -s http://127.0.0.1:$$(cat .testport)/stats | ${PYTHON} $@.py
-else
-print-tests:
-endif
