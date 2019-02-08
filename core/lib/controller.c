@@ -14,7 +14,6 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <sys/epoll.h>
-#include <sys/eventfd.h>
 
 #include "sbp/logging.h"
 #include "sbp/http.h"
@@ -73,7 +72,7 @@ struct ctrl {
 	int epollfd;
 
 	/* Trigger epoll_wait on closing */
-	int eventfd;
+	int closefd[2];
 
 	pthread_mutex_t queue_lock;
 	TAILQ_HEAD(, worker) worker_threads;
@@ -247,10 +246,9 @@ quit_listen_thread_and_broadcast(struct ctrl *ctrl, bool close_listen) {
 	ctrl->quit = true;
 
 	/* Wake up epoll */
-	if (ctrl->eventfd >= 0) {
-		uint64_t x = 1;
-		if (write(ctrl->eventfd, &x, sizeof(x)) != sizeof(x))
-			log_printf(LOG_WARNING, "Failed to write to eventfd, ignoring: %m");
+	if (ctrl->closefd[1] >= 0) {
+		close(ctrl->closefd[1]);
+		ctrl->closefd[1] = -1;
 	}
 
 	if (close_listen) {
@@ -370,8 +368,10 @@ ctrl_quit_stage_two(struct ctrl *ctrl) {
 	tls_free_cert_array(ctrl->tls.ncerts, ctrl->tls.cert_arr);
 	tls_clear_context(&ctrl->tls.ctx);
 
-	if (ctrl->eventfd >= 0)
-		close(ctrl->eventfd);
+	if (ctrl->closefd[0] >= 0)
+		close(ctrl->closefd[0]);
+	if (ctrl->closefd[1] >= 0)
+		close(ctrl->closefd[1]);
 
 	free(ctrl);
 }
@@ -1138,7 +1138,7 @@ close_event(struct event_handler *event_handler, struct ctrl *ctrl) {
 	/* Drain */
 	uint64_t unused;
 	if (read(event_handler->fd, &unused, sizeof(unused)) != sizeof(unused))
-		log_printf(LOG_WARNING, "Failed to drain eventfd, ignoring: %m");
+		log_printf(LOG_WARNING, "Failed to drain closefd, ignoring: %m");
 
 	free(event_handler);
 }
@@ -1206,8 +1206,8 @@ listen_thread(void *v) {
 
 	ctrl->epollfd = epoll_create(CONTROLLER_NUM_FDS);
 	event_add(ctrl, accept_event, ctrl->listen_socket, NULL);
-	if (ctrl->eventfd >= 0)
-		event_add(ctrl, close_event, ctrl->eventfd, NULL);
+	if (ctrl->closefd[0] >= 0)
+		event_add(ctrl, close_event, ctrl->closefd[0], NULL);
 
 	while (!ctrl->quit) {
 		struct epoll_event events[CONTROLLER_NUM_FDS];
@@ -1461,8 +1461,9 @@ ctrl_setup(struct bconf_node *ctrl_conf, const struct ctrl_handler *handlers, in
 	}
 
 	/* Non fatal */
-	if ((ctrl->eventfd = eventfd(0, 0)) < 0) {
-		log_printf(LOG_WARNING, "Failed to create eventfd %m");
+	if (pipe(ctrl->closefd) < 0) {
+		log_printf(LOG_WARNING, "Failed to create closefd %m");
+		ctrl->closefd[0] = ctrl->closefd[1] = -1;
 	}
 
 	ctrl->num_accept = stat_counter_dynamic_alloc(2, "controller", "accept");
@@ -1470,8 +1471,10 @@ ctrl_setup(struct bconf_node *ctrl_conf, const struct ctrl_handler *handlers, in
 		if (listen_socket == -1)
 			close(ctrl->listen_socket);
 
-		if (ctrl->eventfd >= 0)
-			close(ctrl->eventfd);
+		if (ctrl->closefd[0] >= 0)
+			close(ctrl->closefd[0]);
+		if (ctrl->closefd[1] >= 0)
+			close(ctrl->closefd[1]);
 
 		if (ctrl->stat_counters_prefix) {
 			for (i = 0; i < ctrl->nhandlers; i++)
