@@ -138,6 +138,9 @@ int writev_retry(int fd, struct iovec *iov, int iovcnt, ssize_t iovlen_sum) {
 /* func would be bind (reader) or connect (writer) */
 int
 sd_open_socket(const char *socket_name, int timeout_s, int(*func)(int, const struct sockaddr *, socklen_t)) {
+#ifndef SOCK_CLOEXEC
+#define SOCK_CLOEXEC 0 // Not defined on Darwin
+#endif
 	int fd = socket(AF_UNIX, SOCK_DGRAM|SOCK_CLOEXEC, 0);
 	if (fd < 0) {
 		return -1;

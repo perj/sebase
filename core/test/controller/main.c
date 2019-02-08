@@ -8,7 +8,6 @@
 #include "sbp/logging.h"
 #include <inttypes.h>
 #include <netdb.h>
-#include <semaphore.h>
 #include <unistd.h>
 #include <time.h>
 
@@ -21,6 +20,7 @@
 #else
 #include <sha2.h>
 #endif
+#include "sbp/semcompat.h"
 #include "sbp/sock_util.h"
 #include "sbp/stat_counters.h"
 #include "sbp/stringmap.h"
@@ -121,7 +121,7 @@ some_json_finish(struct ctrl_req *cr, struct stringmap *qs, void *v) {
 }
 
 struct state {
-	sem_t stop_sem;
+	semaphore_t stop_sem;
 	struct ctrl *ctrl;
 	bool stop;
 	bool started;
@@ -139,7 +139,7 @@ stop_cmd(struct ctrl_req *cr, struct stringmap *qs, void *v) {
 		ctrl_error(cr, 503, "stop in progress");
 		return;
 	}
-	sem_post(&s->stop_sem);
+	semaphore_post(&s->stop_sem);
 }
 
 static void
@@ -287,8 +287,8 @@ run(void) {
 		},
 	};
 
-	if (sem_init(&state.stop_sem, 0, 0) == -1)
-		err(1, "sem_init");
+	if (semaphore_init(&state.stop_sem, false, 0) == -1)
+		err(1, "semaphore_init");
 
 
 	state.stop = false;
@@ -329,13 +329,13 @@ run(void) {
 	startup_ready("regress_controller");
 	setproctitle("running");
 
-	sem_wait(&state.stop_sem);
+	semaphore_wait(&state.stop_sem);
 	ctrl_quit_stage_two(state.ctrl);
 
 	state.stop = true;
 	pthread_join(kthread, NULL);
 
-	sem_destroy(&state.stop_sem);
+	semaphore_destroy(&state.stop_sem);
 	bconf_free(&root);
 	log_shutdown();
 

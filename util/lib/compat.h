@@ -18,6 +18,7 @@
 
 #ifndef __OpenBSD__
 #define memrchr(h, n, l) __extension__({ const void *__h = (h), *__e = __h + l; int __n = (n); void *__m = NULL; while ((__h = memchr(__h, __n, __e - __h))) __m = (void*)__h++; __m; })
+#define explicit_bzero bzero
 #endif
 
 #endif

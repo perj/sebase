@@ -7,6 +7,7 @@
 #include "sbp/macros.h"
 
 #include <stdbool.h>
+#include <sys/types.h>
 
 #ifdef __cplusplus
 extern "C" {

@@ -14,8 +14,10 @@
 #define TH(x) x
 
 static __inline  int
-lru_compare(const struct lru_entry *a, const struct lru_entry *b) {
-	return strcmp(a->key, b->key);
+lru_compare(const struct avl_node *a, const struct avl_node *b) {
+	const struct lru_entry *ae = avl_data(a, struct lru_entry, te);
+	const struct lru_entry *be = avl_data(b, struct lru_entry, te);
+	return strcmp(ae->key, be->key);
 }
 
 struct lru {
@@ -23,13 +25,11 @@ struct lru {
 	size_t max_size;
 	TH(pthread_mutex_t mutex;)
 	void (*destr)(void*);
-	RB_HEAD(lru_tree, lru_entry) tree;
+	struct avl_node *tree;
 	TAILQ_HEAD(lru_head, lru_entry) lru;
 	void (*lru_stat_cb)(struct lru *c, const char *stat);
 	uint64_t rindex;
 };
-
-RB_GENERATE_STATIC(lru_tree, lru_entry, te, lru_compare);
 
 static void
 lru_stat(struct lru *c, const char *stat)
@@ -40,13 +40,10 @@ lru_stat(struct lru *c, const char *stat)
 
 struct lru *
 lru_init(size_t size, void (*destr)(void*), void (*lru_stat_cb)(struct lru *c, const char *stat)) {
-	struct lru *c = xmalloc(sizeof(*c));
-	c->size = 0;
+	struct lru *c = zmalloc(sizeof(*c));
 	c->max_size = size;
 	c->destr = destr;
-	c->rindex = 0;
 	TH(pthread_mutex_init(&c->mutex, NULL));
-	RB_INIT(&c->tree);
 	TAILQ_INIT(&c->lru);
 	c->lru_stat_cb = lru_stat_cb;
 
@@ -62,7 +59,7 @@ lru_flush(struct lru *c) {
 		while (o->users)
 			usleep(100000);
 		TAILQ_REMOVE(&c->lru, o, tq);
-		RB_REMOVE(lru_tree, &c->tree, o);
+		avl_delete(&o->te, &c->tree, lru_compare);
 		if (o->storage && c->destr)
 			c->destr(o->storage);
 		TH(pthread_mutex_destroy(&o->mutex));
@@ -106,7 +103,11 @@ cache_lru(struct lru *c, const char *key, int klen, int *new_entry, void (*pendi
 	int cklen = snprintf(combined_key, sizeof(combined_key), "%"PRIu64"#%.*s", c->rindex, klen, key);
 	f.key = combined_key;
 
-	e = RB_FIND(lru_tree, &c->tree, &f);
+	struct avl_node *enode = avl_lookup(&f.te, &c->tree, lru_compare);
+	if (enode)
+		e = avl_data(enode, struct lru_entry, te);
+	else
+		e = NULL;
 
 	if (!e) {
 		/* lru_stat("CACHE MISS"); */
@@ -127,7 +128,7 @@ cache_lru(struct lru *c, const char *key, int klen, int *new_entry, void (*pendi
 			}
 			lru_stat(c, "CACHE OUT");
 			TAILQ_REMOVE(&c->lru, o, tq);
-			RB_REMOVE(lru_tree, &c->tree, o);
+			avl_delete(&o->te, &c->tree, lru_compare);
 			if (o->storage && c->destr)
 				c->destr(o->storage);
 			c->size -= o->storage_size;
@@ -148,7 +149,7 @@ cache_lru(struct lru *c, const char *key, int klen, int *new_entry, void (*pendi
 		e->users = 1;
 		*new_entry = 1;
 		TAILQ_INSERT_TAIL(&c->lru, e, tq);
-		RB_INSERT(lru_tree, &c->tree, e);
+		avl_insert(&e->te, &c->tree, lru_compare);
 	} else if (e->pending && pthread_equal(e->pending_thread, pthread_self())) {
 		lru_stat(c, "CACHE RECURSE");
 		*new_entry = 0;
