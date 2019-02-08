@@ -19,7 +19,7 @@ event_e_close(union ctrl_event_e *e) {
 }
 
 int
-event_e_add(union ctrl_event_e *e, struct event_handler *event_handler, int fd) {
+event_e_add(union ctrl_event_e *e, struct event_handler *event_handler, int fd, bool oneshot) {
 	struct epoll_event event;
 	event.events = EPOLLIN|EPOLLHUP;
 	event.data.ptr = event_handler;
@@ -33,7 +33,7 @@ event_e_remove(union ctrl_event_e *e, int fd) {
 }
 
 int
-event_e_triggered(union ctrl_event_e *e, int fd) {
+event_e_oneshot_triggered(union ctrl_event_e *e, int fd) {
 	return event_e_remove(e, fd);
 }
 

@@ -1106,7 +1106,7 @@ read_event(struct event_handler *event_handler, struct ctrl *ctrl) {
 	int fd = event_handler->fd;
 	struct tls *tls = event_handler->tls;
 
-	event_e_triggered(&ctrl->event_e, fd);
+	event_e_oneshot_triggered(&ctrl->event_e, fd);
 
 	pthread_mutex_lock(&ctrl->event_lock);
 	TAILQ_REMOVE(&ctrl->event_list, event_handler, event_entry);
@@ -1149,7 +1149,7 @@ accept_event(struct event_handler *event_handler, struct ctrl *ctrl) {
 }
 
 static void
-event_add(struct ctrl *ctrl, void (*cb)(struct event_handler *, struct ctrl *), int fd, struct tls *tls) {
+event_add(struct ctrl *ctrl, void (*cb)(struct event_handler *, struct ctrl *), int fd, struct tls *tls, bool oneshot) {
 	struct event_handler *event_handler = calloc(1, sizeof(*event_handler));
 	if (!event_handler) {
 		log_printf(LOG_CRIT, "failed to calloc event_handler: %m");
@@ -1168,7 +1168,7 @@ event_add(struct ctrl *ctrl, void (*cb)(struct event_handler *, struct ctrl *), 
 	 * We might have closed the engine but still be processing
 	 * jobs from keepalive connections, close the fd and log the errors
 	 */
-	if (!ctrl->quit && event_e_add(&ctrl->event_e, event_handler, fd) < 0) {
+	if (!ctrl->quit && event_e_add(&ctrl->event_e, event_handler, fd, oneshot) < 0) {
 		log_printf(LOG_CRIT, "Error adding socket to event set: %m");
 
 		pthread_mutex_lock(&ctrl->event_lock);
@@ -1190,9 +1190,9 @@ listen_thread(void *v) {
 	struct ctrl *ctrl = (struct ctrl *)v;
 
 	event_e_init(&ctrl->event_e);
-	event_add(ctrl, accept_event, ctrl->listen_socket, NULL);
+	event_add(ctrl, accept_event, ctrl->listen_socket, NULL, false);
 	if (ctrl->closefd[0] >= 0)
-		event_add(ctrl, close_event, ctrl->closefd[0], NULL);
+		event_add(ctrl, close_event, ctrl->closefd[0], NULL, true);
 
 	while (!ctrl->quit) {
 		if (event_e_handle(&ctrl->event_e, ctrl) < 0) {
@@ -1252,7 +1252,7 @@ worker_thread(void *v) {
 				handle_request(&cr, r);
 
 			if (cr.keepalive) {
-				event_add(ctrl, read_event, fd, cr.tls);
+				event_add(ctrl, read_event, fd, cr.tls, true);
 			} else {
 				if (cr.tls) {
 					tls_stop(cr.tls);

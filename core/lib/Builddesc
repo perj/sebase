@@ -15,6 +15,9 @@ LIB(sebase-core
 	srcs::linux[
 		controller-epoll.c
 	]
+	srcs::!linux[
+		controller-kqueue.c
+	]
 	incprefix[sbp]
 	includes[
 		controller.h create_socket.h daemon.h etcdclient.h fd_pool.h

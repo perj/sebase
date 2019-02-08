@@ -1,6 +1,7 @@
 // Copyright 2018 Schibsted
 
 #include <stdio.h>
+#include <string.h>
 
 #include "sbp/bconf.h"
 #include <controller.h>
