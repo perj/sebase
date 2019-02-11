@@ -438,6 +438,7 @@ collect_suites(const char *pdir, const char *sdir) {
 			tss++;
 		}
 	}
+	closedir(d);
 	free(dir);
 }
 
