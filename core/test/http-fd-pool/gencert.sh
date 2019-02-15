@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Copyright 2018 Schibsted
 #exec 2>/dev/null
 openssl req -config <(printf "

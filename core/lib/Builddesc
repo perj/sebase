@@ -9,19 +9,20 @@ LIB(sebase-core
 		fd_pool.c fd_pool_url_scheme.gperf fd_pool_sd.c http_fd_pool.c
 		log_event.c parse_query_string.c platform_app.c
 		sd_command.gperf sd_queue.c sd_registry.c
+		controller-log.c controller-stats.c controller.c
 	]
 	# Controllers currently require epoll and eventfd.
 	srcs::linux[
-		controller-log.c controller-stats.c controller.c
+		controller-epoll.c
+	]
+	srcs::!linux[
+		controller-kqueue.c
 	]
 	incprefix[sbp]
 	includes[
-		create_socket.h daemon.h etcdclient.h fd_pool.h
+		controller.h create_socket.h daemon.h etcdclient.h fd_pool.h
 		fd_pool_sd.h http_fd_pool.h log_event.h parse_query_string.h
 		platform_app.h sd_queue.h sd_registry.h
-	]
-	includes::linux[
-		controller.h
 	]
 	specialsrcs[
 		gperf_switch:controller.c:ctrl_header.gperf

@@ -13,8 +13,6 @@
 #include <errno.h>
 #include <assert.h>
 #include <stdbool.h>
-#include <sys/epoll.h>
-#include <sys/eventfd.h>
 
 #include "sbp/logging.h"
 #include "sbp/http.h"
@@ -34,9 +32,9 @@
 #include "sbp/stringmap.h"
 #include "sbp/tls.h"
 
-#define CONTROLLER_EPOLL_TIMEOUT_MS 2000
-#define CONTROLLER_NUM_FDS 64
 #define MIN_NTHREADS 5
+
+#include "controller-events.h"
 
 struct job {
 	bool initial;
@@ -70,10 +68,10 @@ struct ctrl {
 	} tls;
 
 	pthread_t listen_thread;
-	int epollfd;
+	union ctrl_event_e event_e;
 
-	/* Trigger epoll_wait on closing */
-	int eventfd;
+	/* Trigger event on closing */
+	int closefd[2];
 
 	pthread_mutex_t queue_lock;
 	TAILQ_HEAD(, worker) worker_threads;
@@ -134,13 +132,6 @@ struct ctrl_req {
 	const char *response_content_type;
 	void *raw_response_data;
 	size_t raw_response_data_sz;
-};
-
-struct event_handler {
-	void (*cb)(struct event_handler *, struct ctrl *);
-	int fd;
-	struct tls *tls;
-	TAILQ_ENTRY(event_handler) event_entry;
 };
 
 #define WORKER_STATE(worker, ...) do { if (worker->thr_state) { stat_message_printf(worker->thr_state, __VA_ARGS__); } } while (0)
@@ -246,11 +237,10 @@ static void
 quit_listen_thread_and_broadcast(struct ctrl *ctrl, bool close_listen) {
 	ctrl->quit = true;
 
-	/* Wake up epoll */
-	if (ctrl->eventfd >= 0) {
-		uint64_t x = 1;
-		if (write(ctrl->eventfd, &x, sizeof(x)) != sizeof(x))
-			log_printf(LOG_WARNING, "Failed to write to eventfd, ignoring: %m");
+	/* Wake up event listener */
+	if (ctrl->closefd[1] >= 0) {
+		close(ctrl->closefd[1]);
+		ctrl->closefd[1] = -1;
 	}
 
 	if (close_listen) {
@@ -261,8 +251,7 @@ quit_listen_thread_and_broadcast(struct ctrl *ctrl, bool close_listen) {
 		 * remove it to stop handling connections. They'll instead start
 		 * queuing up on the socket.
 		 */
-		struct epoll_event event;
-		epoll_ctl(ctrl->epollfd, EPOLL_CTL_DEL, ctrl->listen_socket, &event);
+		event_e_remove(&ctrl->event_e, ctrl->listen_socket);
 	}
 	pthread_join(ctrl->listen_thread, NULL);
 
@@ -370,8 +359,10 @@ ctrl_quit_stage_two(struct ctrl *ctrl) {
 	tls_free_cert_array(ctrl->tls.ncerts, ctrl->tls.cert_arr);
 	tls_clear_context(&ctrl->tls.ctx);
 
-	if (ctrl->eventfd >= 0)
-		close(ctrl->eventfd);
+	if (ctrl->closefd[0] >= 0)
+		close(ctrl->closefd[0]);
+	if (ctrl->closefd[1] >= 0)
+		close(ctrl->closefd[1]);
 
 	free(ctrl);
 }
@@ -1115,8 +1106,7 @@ read_event(struct event_handler *event_handler, struct ctrl *ctrl) {
 	int fd = event_handler->fd;
 	struct tls *tls = event_handler->tls;
 
-	struct epoll_event event;
-	epoll_ctl(ctrl->epollfd, EPOLL_CTL_DEL, fd, &event);
+	event_e_oneshot_triggered(&ctrl->event_e, fd);
 
 	pthread_mutex_lock(&ctrl->event_lock);
 	TAILQ_REMOVE(&ctrl->event_list, event_handler, event_entry);
@@ -1132,13 +1122,12 @@ close_event(struct event_handler *event_handler, struct ctrl *ctrl) {
 	TAILQ_REMOVE(&ctrl->event_list, event_handler, event_entry);
 	pthread_mutex_unlock(&ctrl->event_lock);
 
-	struct epoll_event event;
-	epoll_ctl(ctrl->epollfd, EPOLL_CTL_DEL, event_handler->fd, &event);
+	event_e_remove(&ctrl->event_e, event_handler->fd);
 
 	/* Drain */
 	uint64_t unused;
 	if (read(event_handler->fd, &unused, sizeof(unused)) != sizeof(unused))
-		log_printf(LOG_WARNING, "Failed to drain eventfd, ignoring: %m");
+		log_printf(LOG_WARNING, "Failed to drain closefd, ignoring: %m");
 
 	free(event_handler);
 }
@@ -1160,8 +1149,7 @@ accept_event(struct event_handler *event_handler, struct ctrl *ctrl) {
 }
 
 static void
-event_add(struct ctrl *ctrl, void (*cb)(struct event_handler *, struct ctrl *), int fd, struct tls *tls) {
-	struct epoll_event event;
+event_add(struct ctrl *ctrl, void (*cb)(struct event_handler *, struct ctrl *), int fd, struct tls *tls, bool oneshot) {
 	struct event_handler *event_handler = calloc(1, sizeof(*event_handler));
 	if (!event_handler) {
 		log_printf(LOG_CRIT, "failed to calloc event_handler: %m");
@@ -1172,19 +1160,16 @@ event_add(struct ctrl *ctrl, void (*cb)(struct event_handler *, struct ctrl *), 
 	event_handler->fd = fd;
 	event_handler->tls = tls;
 
-	event.events = EPOLLIN|EPOLLHUP;
-	event.data.ptr = event_handler;
-
 	pthread_mutex_lock(&ctrl->event_lock);
 	TAILQ_INSERT_TAIL(&ctrl->event_list, event_handler, event_entry);
 	pthread_mutex_unlock(&ctrl->event_lock);
 
 	/*
-	 * We might have closed the epollfd but still be processing
+	 * We might have closed the engine but still be processing
 	 * jobs from keepalive connections, close the fd and log the errors
 	 */
-	if (!ctrl->quit && epoll_ctl(ctrl->epollfd, EPOLL_CTL_ADD, fd, &event) < 0) {
-		log_printf(LOG_CRIT, "Error adding socket to epoll set: %m");
+	if (!ctrl->quit && event_e_add(&ctrl->event_e, event_handler, fd, oneshot) < 0) {
+		log_printf(LOG_CRIT, "Error adding socket to event set: %m");
 
 		pthread_mutex_lock(&ctrl->event_lock);
 		TAILQ_REMOVE(&ctrl->event_list, event_handler, event_entry);
@@ -1204,32 +1189,22 @@ static void *
 listen_thread(void *v) {
 	struct ctrl *ctrl = (struct ctrl *)v;
 
-	ctrl->epollfd = epoll_create(CONTROLLER_NUM_FDS);
-	event_add(ctrl, accept_event, ctrl->listen_socket, NULL);
-	if (ctrl->eventfd >= 0)
-		event_add(ctrl, close_event, ctrl->eventfd, NULL);
+	event_e_init(&ctrl->event_e);
+	event_add(ctrl, accept_event, ctrl->listen_socket, NULL, false);
+	if (ctrl->closefd[0] >= 0)
+		event_add(ctrl, close_event, ctrl->closefd[0], NULL, true);
 
 	while (!ctrl->quit) {
-		struct epoll_event events[CONTROLLER_NUM_FDS];
-		int nfds;
-		int i;
-
-		/* Wake up every x to handle quit */
-		if ((nfds = epoll_wait(ctrl->epollfd, events, CONTROLLER_NUM_FDS, CONTROLLER_EPOLL_TIMEOUT_MS)) < 0) {
+		if (event_e_handle(&ctrl->event_e, ctrl) < 0) {
 			if (errno == EINTR)
 				continue;
-			log_printf(LOG_CRIT, "Error calling epoll_wait (%d): %m", ctrl->epollfd);
+			log_printf(LOG_CRIT, "Error handling events: %m");
 			ctrl->quit = true;
 			break;
 		}
-
-		for (i = 0; i < nfds; i++) {
-			struct event_handler *event_handler = events[i].data.ptr;
-			event_handler->cb(event_handler, ctrl);
-		}
 	}
 
-	close(ctrl->epollfd);
+	event_e_close(&ctrl->event_e);
 	pthread_exit(NULL);
 }
 
@@ -1277,7 +1252,7 @@ worker_thread(void *v) {
 				handle_request(&cr, r);
 
 			if (cr.keepalive) {
-				event_add(ctrl, read_event, fd, cr.tls);
+				event_add(ctrl, read_event, fd, cr.tls, true);
 			} else {
 				if (cr.tls) {
 					tls_stop(cr.tls);
@@ -1461,8 +1436,9 @@ ctrl_setup(struct bconf_node *ctrl_conf, const struct ctrl_handler *handlers, in
 	}
 
 	/* Non fatal */
-	if ((ctrl->eventfd = eventfd(0, 0)) < 0) {
-		log_printf(LOG_WARNING, "Failed to create eventfd %m");
+	if (pipe(ctrl->closefd) < 0) {
+		log_printf(LOG_WARNING, "Failed to create closefd %m");
+		ctrl->closefd[0] = ctrl->closefd[1] = -1;
 	}
 
 	ctrl->num_accept = stat_counter_dynamic_alloc(2, "controller", "accept");
@@ -1470,8 +1446,10 @@ ctrl_setup(struct bconf_node *ctrl_conf, const struct ctrl_handler *handlers, in
 		if (listen_socket == -1)
 			close(ctrl->listen_socket);
 
-		if (ctrl->eventfd >= 0)
-			close(ctrl->eventfd);
+		if (ctrl->closefd[0] >= 0)
+			close(ctrl->closefd[0]);
+		if (ctrl->closefd[1] >= 0)
+			close(ctrl->closefd[1]);
 
 		if (ctrl->stat_counters_prefix) {
 			for (i = 0; i < ctrl->nhandlers; i++)
