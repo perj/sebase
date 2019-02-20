@@ -139,8 +139,27 @@ func (l Level) Fatal(v ...interface{}) {
 	os.Exit(1)
 }
 
-// Calls log_printf followed by os.Exit(1)
+// Calls l.Write followed by os.Exit(1)
 func (l Level) Fatalf(format string, v ...interface{}) {
 	fmt.Fprintf(l, format, v...)
 	os.Exit(1)
+}
+
+// Calls l.Write followed by panic.
+func (l Level) Panic(v ...interface{}) {
+	fmt.Fprint(l, v...)
+	panic(fmt.Sprint(v...))
+}
+
+// Calls l.Write followed by panic.
+func (l Level) Panicf(format string, v ...interface{}) {
+	fmt.Fprintf(l, format, v...)
+	panic(fmt.Sprintf(format, v...))
+}
+
+// Convience function that calls LogDict with l.Code() as key. This breaks
+// using strings as values for the standard log levels but that's just a
+// recommendation regardless.
+func (l Level) LogDict(kvs ...interface{}) error {
+	return LogDict(l.Code(), kvs...)
 }

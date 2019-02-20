@@ -6,6 +6,7 @@
 package plog
 
 import (
+	"encoding/json"
 	"log"
 
 	"golang.org/x/crypto/ssh/terminal"
@@ -38,4 +39,34 @@ func Setup(appname, lvl string) {
 func Shutdown() {
 	Default.Close()
 	Default = nil
+}
+
+// Logs to Default if not nil, or to FallbackWriter if Default is nil.
+func Log(key string, value interface{}) error {
+	if Default != nil {
+		return Default.Log(key, value)
+	}
+	jw, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	_, err = FallbackFormatter([]FallbackKey{{key, 0}}, jw)
+	return err
+}
+
+// Log a JSON dictionary from the variadic arguments, alternating keys and
+// values, key first. Logs to Default or to FallbackWriter if nil
+// See Plog.LogDict for more information.
+func LogDict(key string, kvs ...interface{}) error {
+	return Log(key, kvsToDict(kvs))
+}
+
+// Shorthand for Info.Print
+func Print(value ...interface{}) {
+	Info.Print(value...)
+}
+
+// Shorthand for Info.Printf
+func Printf(fmt string, value ...interface{}) {
+	Info.Printf(fmt, value...)
 }
