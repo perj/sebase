@@ -15,7 +15,7 @@ type LogMessage struct {
 	Data      interface{} `json:"message"`
 	// Use a pointer to work around MarshalJSON encoding Time even if zero value
 	StartTimestamp *time.Time `json:"start_timestamp,omitempty"`
-	Host           string     `json:"host"`
+	Host           string     `json:"host,omitempty"`
 
 	// Extra fields added by filters.
 	KV map[string]interface{} `json:"-"`

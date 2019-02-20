@@ -163,6 +163,10 @@ func (ctx *Plog) LogDict(key string, kvs ...interface{}) error {
 	if ctx == nil {
 		return nil
 	}
+	return ctx.Log(key, kvsToDict(kvs))
+}
+
+func kvsToDict(kvs []interface{}) map[string]interface{} {
 	m := make(map[string]interface{}, len(kvs)/2)
 	for i := 0; i < len(kvs); i += 2 {
 		var v interface{}
@@ -178,7 +182,7 @@ func (ctx *Plog) LogDict(key string, kvs ...interface{}) error {
 			m[fmt.Sprint(k)] = v
 		}
 	}
-	return ctx.Log(key, m)
+	return m
 }
 
 // Log raw JSON encoded data in value. You must make sure the JSON is valid,
@@ -233,11 +237,19 @@ func (ctx *Plog) send(key string, value []byte) {
 }
 
 func (ctx *Plog) fallbackWrite(key string, value []byte) {
-	// Construct a composite key with the parents.
+	// Count stack height.
+	n := 0
 	for c := ctx; c != nil; c = c.pctx {
-		key = fmt.Sprintf("%s[%v].%s", strings.Join(c.key, "."), c.id, key)
+		n++
 	}
-	fallbackWrite(key, value)
+	fkey := make([]FallbackKey, n+1)
+	fkey[n].Key = key
+	for c := ctx; c != nil; c = c.pctx {
+		n--
+		fkey[n].Key = strings.Join(c.key, ".")
+		fkey[n].CtxId = c.id
+	}
+	FallbackFormatter(fkey, value)
 }
 
 // Re-open if generation mismatch. Do it on parents first otherwise the server

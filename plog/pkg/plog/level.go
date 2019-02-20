@@ -3,6 +3,7 @@
 package plog
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 )
@@ -99,11 +100,19 @@ func (l Level) Write(w []byte) (n int, err error) {
 	if l > SetupLevel {
 		return 0, nil
 	}
+	// Strip trailing newline.
+	if len(w) > 0 && w[len(w)-1] == '\n' {
+		w = w[:len(w)-1]
+	}
 	if Default != nil {
 		Default.LogAsString(l.Code(), w)
 		return len(w), nil
 	}
-	return fallbackWrite(l.Code(), w)
+	jw, err := json.Marshal(string(w))
+	if err != nil {
+		return 0, err
+	}
+	return FallbackFormatter([]FallbackKey{{l.Code(), 0}}, jw)
 }
 
 // Calls l.Write via fmt.Fprint.
