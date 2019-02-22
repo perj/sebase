@@ -159,7 +159,8 @@ func (l Level) Panicf(format string, v ...interface{}) {
 
 // Convience function that calls LogDict with l.Code() as key. This breaks
 // using strings as values for the standard log levels but that's just a
-// recommendation regardless.
+// recommendation regardless. As a new recommendation, use a "msg" key
+// with a human readable message when using this function.
 func (l Level) LogDict(kvs ...interface{}) error {
 	return LogDict(l.Code(), kvs...)
 }
