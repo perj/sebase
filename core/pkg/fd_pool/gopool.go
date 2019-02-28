@@ -542,6 +542,8 @@ func (c *conn) get(ctx context.Context, status sbalance.ConnStatus) (NetConn, er
 			if err == nil {
 				err = &ErrNoServiceNodes{c.service, strings.Join(c.portKey, ",")}
 			}
+			c.Conn = nil
+			c.closed = 1
 			return nil, err
 		}
 		c.srv.sblock.RUnlock()

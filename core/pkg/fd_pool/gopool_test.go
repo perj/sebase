@@ -82,6 +82,7 @@ func TestUpdateHosts(t *testing.T) {
 	testLastClosed = nil
 	nc := c.(*conn).Conn
 	c.Put()
+	c.Close() // Test that close after put is no-op.
 	if testLastClosed != nil {
 		t.Fatal("Connection closed by Put")
 	}
@@ -168,6 +169,13 @@ func TestNext(t *testing.T) {
 	n2 := c.(*conn).srvnode
 	if n1 == n2 {
 		t.Error("Got the same node after next.")
+	}
+	err = c.Next(context.TODO(), sbalance.Fail)
+	if err == nil {
+		t.Error("Expected next to fail but it didn't.")
+	}
+	if c.(*conn).Conn != nil {
+		t.Error("Expected conn.Conn to be nil after Next failed.")
 	}
 }
 
