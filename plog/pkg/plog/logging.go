@@ -6,26 +6,33 @@
 package plog
 
 import (
-	"io"
+	"encoding/json"
 	"log"
-	"os"
+
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 // Threshold for logging, only this and higher prio levels will log.
 var SetupLevel = Info
 
-// Where logs go if we can't connect to plogd. Defaults to stderr.
-// Logs will be written prefixed with key and suffixed with a newline.
-// All output is json encoded.
-var FallbackWriter io.Writer = os.Stderr
-
 // Initializes the default plog context and changes SetupLevel based on a
 // string.  Also calls log.SetOutput(plog.Info) to redirect log.Printf output
-// to this package.
+// to this package and log.SetFlags(0). Finally checks if FallbackWriter is a
+// TTY. If so, changes FallbackFormatter to FallbackFormatterSimple.
 func Setup(appname, lvl string) {
 	SetupLevel = LogLevel(lvl, SetupLevel)
 	Default = NewPlogLog(appname)
 	log.SetOutput(Info)
+	log.SetFlags(0)
+
+	// Check for Fd function implemented by *os.File.
+	type Fd interface {
+		Fd() uintptr
+	}
+	fd, ok := FallbackWriter.(Fd)
+	if ok && terminal.IsTerminal(int(fd.Fd())) {
+		FallbackFormatter = FallbackFormatterSimple
+	}
 }
 
 // Closes Default, disconnecting from the logging server.
@@ -34,21 +41,32 @@ func Shutdown() {
 	Default = nil
 }
 
-func fallbackWrite(key string, value []byte) (n int, err error) {
-	prefix := key + ": "
-	ww := append([]byte(prefix), value...)
-	if ww[len(ww)-1] != '\n' {
-		ww = append(ww, '\n')
+// Logs to Default if not nil, or to FallbackWriter if Default is nil.
+func Log(key string, value interface{}) error {
+	if Default != nil {
+		return Default.Log(key, value)
 	}
-	n, err = FallbackWriter.Write(ww)
-	// Calculate how much of w we wrote.
-	if n <= len(prefix) {
-		n = 0
-	} else {
-		n -= len(prefix)
-		if n > len(value) {
-			n = len(value)
-		}
+	jw, err := json.Marshal(value)
+	if err != nil {
+		return err
 	}
-	return
+	_, err = FallbackFormatter([]FallbackKey{{key, 0}}, jw)
+	return err
+}
+
+// Log a JSON dictionary from the variadic arguments, alternating keys and
+// values, key first. Logs to Default or to FallbackWriter if nil
+// See Plog.LogDict for more information.
+func LogDict(key string, kvs ...interface{}) error {
+	return Log(key, kvsToDict(kvs))
+}
+
+// Shorthand for Info.Print
+func Print(value ...interface{}) {
+	Info.Print(value...)
+}
+
+// Shorthand for Info.Printf
+func Printf(fmt string, value ...interface{}) {
+	Info.Printf(fmt, value...)
 }

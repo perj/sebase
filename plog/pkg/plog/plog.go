@@ -3,8 +3,10 @@
 package plog
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -75,7 +77,7 @@ func openRoot(key []string, ctype plogproto.CtxType) *Plog {
 	ctx.ctype = ctype
 	ctx.key = key
 
-	ctx.conn = &refconn{refs: 1}
+	ctx.conn = &refconn{refs: 1, dial: plogproto.NewClientConn}
 	ctx.conn.reconnect()
 	ctx.checkGeneration()
 	return ctx
@@ -163,6 +165,10 @@ func (ctx *Plog) LogDict(key string, kvs ...interface{}) error {
 	if ctx == nil {
 		return nil
 	}
+	return ctx.Log(key, kvsToDict(kvs))
+}
+
+func kvsToDict(kvs []interface{}) map[string]interface{} {
 	m := make(map[string]interface{}, len(kvs)/2)
 	for i := 0; i < len(kvs); i += 2 {
 		var v interface{}
@@ -178,7 +184,7 @@ func (ctx *Plog) LogDict(key string, kvs ...interface{}) error {
 			m[fmt.Sprint(k)] = v
 		}
 	}
-	return ctx.Log(key, m)
+	return m
 }
 
 // Log raw JSON encoded data in value. You must make sure the JSON is valid,
@@ -233,11 +239,19 @@ func (ctx *Plog) send(key string, value []byte) {
 }
 
 func (ctx *Plog) fallbackWrite(key string, value []byte) {
-	// Construct a composite key with the parents.
+	// Count stack height.
+	n := 0
 	for c := ctx; c != nil; c = c.pctx {
-		key = fmt.Sprintf("%s[%v].%s", strings.Join(c.key, "."), c.id, key)
+		n++
 	}
-	fallbackWrite(key, value)
+	fkey := make([]FallbackKey, n+1)
+	fkey[n].Key = key
+	for c := ctx; c != nil; c = c.pctx {
+		n--
+		fkey[n].Key = strings.Join(c.key, ".")
+		fkey[n].CtxId = c.id
+	}
+	FallbackFormatter(fkey, value)
 }
 
 // Re-open if generation mismatch. Do it on parents first otherwise the server
@@ -258,6 +272,8 @@ type refconn struct {
 	*plogproto.Writer
 	refs       uint64
 	generation uint64
+
+	dial func(sock string) (*plogproto.Writer, error)
 }
 
 func (r *refconn) retain() (*refconn, uint64) {
@@ -282,7 +298,7 @@ func (c *refconn) reconnect() {
 	if gen == c.generation {
 		var err error
 		wasnil := c.Writer == nil
-		c.Writer, err = plogproto.NewClientConn(os.Getenv("PLOG_SOCKET"))
+		c.Writer, err = c.dial(os.Getenv("PLOG_SOCKET"))
 		if err != nil {
 			// Errors are silently ignored here. Typically ENOFILE.
 			c.Writer = nil
@@ -292,4 +308,61 @@ func (c *refconn) reconnect() {
 		}
 	}
 	c.Unlock()
+}
+
+// Messages sent to the channel created by NewTestLogContext
+// Value will be json encoded data.
+type TestMessage struct {
+	CtxId uint64
+	Key   string
+	Value []byte
+}
+
+// Create a custom root log context connected to the channel, for testing.
+// Only messages are sent on the channel, not open or close.
+// Close the context and then wait for the channel to close for proper cleanup.
+func NewTestLogContext(ctx context.Context, key ...string) (*Plog, <-chan TestMessage) {
+	pctx := &Plog{}
+	pctx.id = atomic.AddUint64(&ctxId, 1)
+	pctx.ctype = plogproto.CtxType_log
+	pctx.key = key
+
+	r, w := io.Pipe()
+	ch := make(chan TestMessage)
+	go func() {
+		defer close(ch)
+		pr := plogproto.NewReader(r, false)
+		defer pr.Close()
+		for {
+			var plog plogproto.Plog
+			if err := pr.Receive(&plog); err != nil {
+				if err != io.EOF {
+					// Shouldn't happen.
+					panic(err)
+				}
+				return
+			}
+			for _, m := range plog.Msg {
+				select {
+				case <-ctx.Done():
+					return
+				case ch <- TestMessage{
+					CtxId: *plog.CtxId,
+					Key:   *m.Key,
+					Value: m.Value,
+				}:
+				}
+			}
+		}
+	}()
+	pctx.conn = &refconn{
+		refs: 1,
+		dial: func(sock string) (*plogproto.Writer, error) {
+			return nil, fmt.Errorf("Can't reconnect.")
+		},
+	}
+	pctx.conn.Writer = plogproto.NewWriter(w, false)
+	pctx.conn.generation = 1
+	pctx.checkGeneration()
+	return pctx, ch
 }

@@ -46,7 +46,7 @@ func init() {
 func TestDefaultPlog(t *testing.T) {
 	defer Setup("test", "debug")
 	os.Setenv("PLOG_SOCKET", testSock)
-	defer os.Unsetenv("PLOG_SOCKET")
+	defer os.Setenv("PLOG_SOCKET", "/")
 	testPlogCh = make(chan plogproto.Plog, 2)
 	testN = 2
 
