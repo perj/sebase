@@ -15,6 +15,8 @@ var l net.Listener
 var port int
 
 func init() {
+	DebugLog = defaultLogger(true)
+
 	l, err := net.Listen("tcp", ":0")
 	if err != nil {
 		log.Fatal(err)
