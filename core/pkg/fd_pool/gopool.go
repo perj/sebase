@@ -504,6 +504,30 @@ func (c *conn) moveNode(status sbalance.ConnStatus) {
 	}
 }
 
+func (c *conn) findConnset(status sbalance.ConnStatus) sbalance.ConnStatus {
+	// Lock until we have a connset, to avoid fdServiceNodes being released.
+	c.srv.sblock.RLock()
+	if c.sb != c.srv.Service {
+		// The sb is updated, reset.
+		c.sb = c.srv.Service
+		c.sbconn = c.srv.NewConn(c.remoteAddr)
+		status = sbalance.Start
+		c.newConnect = false
+		c.connset.Release()
+		c.connset = nil
+	}
+	if c.connset == nil {
+		c.moveNode(status)
+	} else if c.newConnect {
+		c.movePort()
+		if c.connset == nil {
+			c.moveNode(status)
+		}
+	}
+	c.srv.sblock.RUnlock()
+	return status
+}
+
 // Fetch a stored connection, or make a new connection attempt.
 // Calls moveNode and movePort as needed. Will use up stored
 // connections until none is left for a node and port key combo, then
@@ -518,27 +542,8 @@ func (c *conn) get(ctx context.Context, status sbalance.ConnStatus) (NetConn, er
 	}
 	var err error
 	for {
-		// Lock until we have a connset, to avoid fdServiceNodes being released.
-		c.srv.sblock.RLock()
-		if c.sb != c.srv.Service {
-			// The sb is updated, reset.
-			c.sb = c.srv.Service
-			c.sbconn = c.srv.NewConn(c.remoteAddr)
-			status = sbalance.Start
-			c.newConnect = false
-			c.connset.Release()
-			c.connset = nil
-		}
+		status = c.findConnset(status)
 		if c.connset == nil {
-			c.moveNode(status)
-		} else if c.newConnect {
-			c.movePort()
-			if c.connset == nil {
-				c.moveNode(status)
-			}
-		}
-		if c.connset == nil {
-			c.srv.sblock.RUnlock()
 			if err == nil {
 				err = &ErrNoServiceNodes{c.service, strings.Join(c.portKey, ",")}
 			}
@@ -546,7 +551,6 @@ func (c *conn) get(ctx context.Context, status sbalance.ConnStatus) (NetConn, er
 			c.closed = 1
 			return nil, err
 		}
-		c.srv.sblock.RUnlock()
 
 		c.connset.Lock()
 		for len(c.connset.conns) > 0 {
