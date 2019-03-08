@@ -5,6 +5,7 @@ package fd_pool
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"runtime"
 	"strconv"
@@ -29,6 +30,7 @@ func TestConf(t *testing.T) {
 
 func TestGoSingle(t *testing.T) {
 	pool := NewGoPool(nil)
+	defer pool.Close()
 	err := pool.AddSingle(context.TODO(), "test", "tcp", fmt.Sprintf("localhost:%d", port), 1, 1*time.Second)
 	if err != nil {
 		t.Fatal("addsingle", err)
@@ -59,6 +61,7 @@ func testDial(ctx context.Context, nw, addr string) (net.Conn, error) {
 
 func TestUpdateHosts(t *testing.T) {
 	pool := NewGoPool(nil)
+	defer pool.Close()
 	pool.AddSingle(context.TODO(), "test", "tcp", fmt.Sprintf("127.0.0.1:%d", port), DefaultRetries, 1*time.Second)
 	pool.SetDialFunc("test", testDial)
 
@@ -79,6 +82,7 @@ func TestUpdateHosts(t *testing.T) {
 	testLastClosed = nil
 	nc := c.(*conn).Conn
 	c.Put()
+	c.Close() // Test that close after put is no-op.
 	if testLastClosed != nil {
 		t.Fatal("Connection closed by Put")
 	}
@@ -140,6 +144,7 @@ func TestUpdateHosts(t *testing.T) {
 
 func TestNext(t *testing.T) {
 	pool := NewGoPool(nil)
+	defer pool.Close()
 	pool.AddSingle(context.TODO(), "test", "tcp", fmt.Sprintf("127.0.0.1:%d", port), DefaultRetries, 1*time.Second)
 	pool.AddSingle(context.TODO(), "test", "tcp", fmt.Sprintf("[::1]:%d", port), DefaultRetries, 1*time.Second)
 
@@ -165,4 +170,68 @@ func TestNext(t *testing.T) {
 	if n1 == n2 {
 		t.Error("Got the same node after next.")
 	}
+	err = c.Next(context.TODO(), sbalance.Fail)
+	if err == nil {
+		t.Error("Expected next to fail but it didn't.")
+	}
+	if c.(*conn).Conn != nil {
+		t.Error("Expected conn.Conn to be nil after Next failed.")
+	}
+}
+
+func TestReused(t *testing.T) {
+	ln, err := net.Listen("tcp", ":0")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer ln.Close()
+	lconch := make(chan net.Conn)
+	go func() {
+		defer close(lconch)
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			lconch <- conn
+		}
+	}()
+
+	// Setup
+	port = ln.Addr().(*net.TCPAddr).Port
+	pool := NewGoPool(nil)
+	defer pool.Close()
+	pool.AddSingle(context.TODO(), "test", "tcp", fmt.Sprintf("127.0.0.1:%d", port), DefaultRetries, 1*time.Second)
+	c, err := pool.NewConn(context.TODO(), "test", "port", "")
+	if err != nil {
+		t.Fatal("NewConn", err)
+	}
+
+	// Check that put + newconn gets the same connection back.
+	conn1 := c.(*conn).Conn
+	c.Put()
+	c, err = pool.NewConn(context.TODO(), "test", "port", "")
+	if err != nil {
+		t.Fatal("NewConn", err)
+	}
+	if conn1 != c.(*conn).Conn {
+		t.Error("Connection wasn't reused after Put.")
+	}
+
+	// Check again but close from server-side. NewConn should now return a new connection.
+	c.Put()
+	lconn := <-lconch
+	lconn.Close()
+	c, err = pool.NewConn(context.TODO(), "test", "port", "")
+	if err != nil {
+		t.Fatal("NewConn", err)
+	}
+	if conn1 == c.(*conn).Conn {
+		t.Error("Connection was reused after server-side close.")
+	}
+
+	// Cleanup
+	lconn = <-lconch
+	lconn.Close()
+	c.Close()
 }

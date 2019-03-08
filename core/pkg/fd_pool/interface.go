@@ -38,6 +38,8 @@ type FdPool interface {
 // It will return ErrNoServiceNodes if the nodes are depleted and no connection
 // attempt was made. If a connection was attempted but failed the error from
 // the dial function will be returned.
+// After Next any deadlines or other connection specific value set will be
+// removed so you will have to set them again.
 //
 // Reset can be used to start over from the start. In case of random strat a
 // new node will be chosen. It's rarely used.

@@ -15,6 +15,8 @@ var l net.Listener
 var port int
 
 func init() {
+	DebugLog = defaultLogger(true)
+
 	l, err := net.Listen("tcp", ":0")
 	if err != nil {
 		log.Fatal(err)
@@ -28,6 +30,7 @@ func readwrite(tb testing.TB, pool FdPool, service string) {
 	if err != nil {
 		tb.Fatal(err)
 	}
+	defer conn.Close()
 
 	_, err = io.WriteString(conn, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
 	if err != nil {

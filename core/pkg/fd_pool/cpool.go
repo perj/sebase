@@ -28,6 +28,8 @@ import "C"
 
 // Fd pool wrapping a C pool. Normally you should prefer to use the Go version
 // instead. CPool usually ignores any context.Context arguments given to it.
+//
+// CPool connections do not currently support deadlines.
 type CPool struct {
 	pool          *C.struct_fd_pool
 	dialDomain    *C.char

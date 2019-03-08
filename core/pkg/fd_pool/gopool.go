@@ -12,11 +12,13 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/schibsted/sebase/core/pkg/sd/sdr"
 	"github.com/schibsted/sebase/util/pkg/sbalance"
 	"github.com/schibsted/sebase/vtree/pkg/bconf"
+	"golang.org/x/sys/unix"
 )
 
 var (
@@ -502,6 +504,30 @@ func (c *conn) moveNode(status sbalance.ConnStatus) {
 	}
 }
 
+func (c *conn) findConnset(status sbalance.ConnStatus) sbalance.ConnStatus {
+	// Lock until we have a connset, to avoid fdServiceNodes being released.
+	c.srv.sblock.RLock()
+	if c.sb != c.srv.Service {
+		// The sb is updated, reset.
+		c.sb = c.srv.Service
+		c.sbconn = c.srv.NewConn(c.remoteAddr)
+		status = sbalance.Start
+		c.newConnect = false
+		c.connset.Release()
+		c.connset = nil
+	}
+	if c.connset == nil {
+		c.moveNode(status)
+	} else if c.newConnect {
+		c.movePort()
+		if c.connset == nil {
+			c.moveNode(status)
+		}
+	}
+	c.srv.sblock.RUnlock()
+	return status
+}
+
 // Fetch a stored connection, or make a new connection attempt.
 // Calls moveNode and movePort as needed. Will use up stored
 // connections until none is left for a node and port key combo, then
@@ -516,39 +542,31 @@ func (c *conn) get(ctx context.Context, status sbalance.ConnStatus) (NetConn, er
 	}
 	var err error
 	for {
-		// Lock until we have a connset, to avoid fdServiceNodes being released.
-		c.srv.sblock.RLock()
-		if c.sb != c.srv.Service {
-			// The sb is updated, reset.
-			c.sb = c.srv.Service
-			c.sbconn = c.srv.NewConn(c.remoteAddr)
-			status = sbalance.Start
-			c.newConnect = false
-			c.connset.Release()
-			c.connset = nil
-		}
+		status = c.findConnset(status)
 		if c.connset == nil {
-			c.moveNode(status)
-		} else if c.newConnect {
-			c.movePort()
-			if c.connset == nil {
-				c.moveNode(status)
-			}
-		}
-		if c.connset == nil {
-			c.srv.sblock.RUnlock()
 			if err == nil {
 				err = &ErrNoServiceNodes{c.service, strings.Join(c.portKey, ",")}
 			}
+			c.Conn = nil
+			c.closed = 1
 			return nil, err
 		}
-		c.srv.sblock.RUnlock()
+
 		c.connset.Lock()
-		if len(c.connset.conns) > 0 {
-			c.Conn = c.connset.conns[0]
+		for len(c.connset.conns) > 0 {
+			netc := c.connset.conns[0]
 			c.connset.conns = c.connset.conns[1:]
+
+			if checkDeadConnection(netc) {
+				netc.Close()
+				continue
+			}
+
+			c.Conn = netc
+			c.SetDeadline(time.Time{})
 			c.connset.Unlock()
 			c.newConnect = false
+			DebugLog.Printf("Reusing connection to %s", c.connset.port.Addr)
 			return c, nil
 		}
 		c.connset.Unlock()
@@ -558,7 +576,39 @@ func (c *conn) get(ctx context.Context, status sbalance.ConnStatus) (NetConn, er
 		if c.Conn != nil {
 			return c, nil
 		}
+		// We ran into a hard failure.
+		status = sbalance.Fail
 	}
+}
+
+func checkDeadConnection(netc net.Conn) (dead bool) {
+	// If possible, test that the connection is valid.
+	// I've tested using netc.Write for this, but it didn't work. Instead
+	// call syscall.Poll directly. This obviously isn't as portable, but
+	// should work on our supported systems.
+	type rawconn interface {
+		SyscallConn() (syscall.RawConn, error)
+	}
+	if sc, ok := netc.(rawconn); ok {
+		if scc, err := sc.SyscallConn(); err == nil {
+			scc.Control(func(fd uintptr) {
+				pfd := []unix.PollFd{
+					{int32(fd), unix.POLLHUP | unix.POLLRDHUP, 0},
+				}
+				n, err := unix.Poll(pfd, 0)
+				if n == 0 {
+					return
+				}
+				dead = true
+				if err != nil {
+					DebugLog.Printf("Not returning dead connection: %s", err)
+				} else {
+					DebugLog.Printf("Not returning dead connection: EOF")
+				}
+			})
+		}
+	}
+	return
 }
 
 func (c *conn) Next(ctx context.Context, status sbalance.ConnStatus) error {
