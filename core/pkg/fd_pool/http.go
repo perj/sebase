@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/schibsted/sebase/util/pkg/slog"
 	"github.com/schibsted/sebase/util/pkg/sbalance"
 )
 
@@ -29,7 +30,7 @@ func HttpRequest(ctx context.Context, conn NetConn, tlsconf *tls.Config, req *ht
 		if err == nil {
 			return hc, nil
 		}
-		ErrLog.Printf("Failed to send HTTP request: %v", err)
+		slog.Error("msg", "Failed to send HTTP request", "error", err)
 		err = conn.Next(ctx, sbalance.Fail)
 		if err != nil {
 			return nil, err

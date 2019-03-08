@@ -4,10 +4,9 @@ package fd_pool
 
 import "log"
 
-// Custom loggers support for fd_pool.
-// Used by plog to inject itself. Using plog directly from here would create a
-// circular dependency.
-// By default log.Printf is used, except for DebugLog which doesn't log.
+// Logger interface were used to log from this package.
+// It's no longer in use, the slog package is used instead.
+// It will be removed in the 2.0 release.
 type Logger interface {
 	Printf(format string, a ...interface{})
 }

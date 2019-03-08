@@ -8,12 +8,12 @@ package acl
 
 import (
 	"crypto"
-	"log"
 	"net"
 	"net/http"
 	"strings"
 
 	"github.com/schibsted/sebase/util/pkg/keyid"
+	"github.com/schibsted/sebase/util/pkg/slog"
 )
 
 type Access struct {
@@ -31,7 +31,7 @@ type Acl struct {
 }
 
 func (acl *Acl) InitDefault() {
-	log.Printf("Adding default ACL")
+	slog.Info("msg", "Adding default ACL")
 	p := func(s string) *string {
 		return &s
 	}
@@ -63,7 +63,7 @@ func (acl *Acl) check(v aclValues) bool {
 		if ac.RemoteAddr != nil {
 			ra, err := v.RemoteAddr()
 			if err != nil {
-				log.Printf("Failed to extract remote address: %s", err)
+				slog.Error("msg", "Failed to extract remote address", "error", err)
 				continue
 			}
 			if *ac.RemoteAddr != ra {
@@ -153,7 +153,7 @@ func (v *reqValues) KeyId() *string {
 	}
 	k, err := keyid.CertKeyId(v.req.TLS.PeerCertificates[0], crypto.SHA256)
 	if err != nil {
-		log.Printf("Failed to hash peer public key: %s\n", err)
+		slog.Error("msg", "Failed to hash peer public key", "error", err)
 		return nil
 	}
 	ret := k.String()

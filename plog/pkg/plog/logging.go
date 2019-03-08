@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"log"
 
+	"github.com/schibsted/sebase/util/pkg/slog"
 	"golang.org/x/crypto/ssh/terminal"
 )
 
@@ -16,9 +17,10 @@ import (
 var SetupLevel = Info
 
 // Initializes the default plog context and changes SetupLevel based on a
-// string.  Also calls log.SetOutput(plog.Info) to redirect log.Printf output
-// to this package and log.SetFlags(0). Finally checks if FallbackWriter is a
-// TTY. If so, changes FallbackFormatter to FallbackFormatterSimple.
+// string. Changes the functions used by the slog package to plog and also
+// calls log.SetOutput(plog.Info) to redirect log.Printf output to this package
+// as well as log.SetFlags(0). Finally checks if FallbackWriter is a TTY. If
+// so, changes FallbackFormatter to FallbackFormatterSimple.
 func Setup(appname, lvl string) {
 	SetupLevel = LogLevel(lvl, SetupLevel)
 	Default = NewPlogLog(appname)
@@ -33,6 +35,11 @@ func Setup(appname, lvl string) {
 	if ok && terminal.IsTerminal(int(fd.Fd())) {
 		FallbackFormatter = FallbackFormatterSimple
 	}
+	slog.Critical.SetErrf(Critical.LogDict)
+	slog.Error.SetErrf(Error.LogDict)
+	slog.Warning.SetErrf(Warning.LogDict)
+	slog.Info.SetErrf(Info.LogDict)
+	slog.Debug.SetErrf(Debug.LogDict)
 }
 
 // Closes Default, disconnecting from the logging server.

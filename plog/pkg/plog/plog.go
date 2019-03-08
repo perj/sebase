@@ -160,6 +160,7 @@ func (ctx *Plog) LogAsString(key string, value []byte) {
 // Log a JSON dictionary from the variadic arguments, alternating keys and
 // values, key first. Note that the first argument is not part of the
 // dictionary, it's the message key.
+// Error interface values are special handled, converted to the error message.
 // Might return errors from json.Marshal.
 func (ctx *Plog) LogDict(key string, kvs ...interface{}) error {
 	if ctx == nil {
@@ -174,6 +175,9 @@ func kvsToDict(kvs []interface{}) map[string]interface{} {
 		var v interface{}
 		if i < len(kvs)-1 {
 			v = kvs[i+1]
+			if err, ok := v.(error); ok {
+				v = err.Error()
+			}
 		}
 		switch k := kvs[i].(type) {
 		case string:

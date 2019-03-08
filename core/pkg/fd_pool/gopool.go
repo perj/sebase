@@ -17,6 +17,7 @@ import (
 
 	"github.com/schibsted/sebase/core/pkg/sd/sdr"
 	"github.com/schibsted/sebase/util/pkg/sbalance"
+	"github.com/schibsted/sebase/util/pkg/slog"
 	"github.com/schibsted/sebase/vtree/pkg/bconf"
 	"golang.org/x/sys/unix"
 )
@@ -389,7 +390,7 @@ func (pool *GoPool) NewConn(ctx context.Context, service, portKey, remoteAddr st
 		if pool.sdReg == nil {
 			return nil, NoSuchService
 		}
-		InfoLog.Printf("NewConn adding service %s", service)
+		slog.Info("msg", "NewConn adding service", "service", service)
 		srv = pool.getService(service, DefaultRetries, DefaultConnectTimeout)
 		srv.sblock.Lock()
 		if srv.sdConn == nil {
@@ -566,7 +567,7 @@ func (c *conn) get(ctx context.Context, status sbalance.ConnStatus) (NetConn, er
 			c.SetDeadline(time.Time{})
 			c.connset.Unlock()
 			c.newConnect = false
-			DebugLog.Printf("Reusing connection to %s", c.connset.port.Addr)
+			slog.Debug("msg", "Reusing connection", "peer", c.connset.port.Addr)
 			return c, nil
 		}
 		c.connset.Unlock()
@@ -601,9 +602,9 @@ func checkDeadConnection(netc net.Conn) (dead bool) {
 				}
 				dead = true
 				if err != nil {
-					DebugLog.Printf("Not returning dead connection: %s", err)
+					slog.Debug("msg", "Not returning dead connection", "error", err)
 				} else {
-					DebugLog.Printf("Not returning dead connection: EOF")
+					slog.Debug("msg", "Not returning dead connection", "eof", true)
 				}
 			})
 		}

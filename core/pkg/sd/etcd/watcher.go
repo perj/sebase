@@ -10,6 +10,7 @@ package etcd
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net"
 	"net/http"
 	"path"
@@ -18,7 +19,7 @@ import (
 
 	"github.com/coreos/etcd/client"
 	"github.com/schibsted/sebase/core/pkg/sd/sdr"
-	"github.com/schibsted/sebase/plog/pkg/plog"
+	"github.com/schibsted/sebase/util/pkg/slog"
 	"github.com/schibsted/sebase/vtree/pkg/bconf"
 )
 
@@ -115,7 +116,7 @@ func (w *Watcher) run() {
 		if len(w.conns) > 0 {
 			var ctx context.Context
 			ctx, cancel = context.WithCancel(context.Background())
-			plog.Debug.Printf("etcd-watcher: Watching %s index %d", w.Prefix, w.index)
+			slog.Debug("msg", "etcd-watcher: Watching prefix", "prefix", w.Prefix, "index", w.index)
 			ew := w.Kapi.Watcher(w.Prefix, &client.WatcherOptions{AfterIndex: w.index, Recursive: true})
 			go func() {
 				rsp, err := ew.Next(ctx)
@@ -168,7 +169,7 @@ func (w *Watcher) doCommand(cmd commMsg) {
 	case *addService:
 		w.doAddService(cmd)
 	case *removeService:
-		plog.Debug.Printf("etcd-watcher: remove %s", cmd.conn.srvpath)
+		slog.Debug("msg", "etcd-watcher: remove service", "service", cmd.conn.srvpath)
 		for idx, conn := range w.conns {
 			if conn == cmd.conn {
 				close(conn.channel)
@@ -189,7 +190,7 @@ func (w *Watcher) doAddService(cmd *addService) {
 	for retry {
 		retry = false
 		ctx, cancel := context.WithTimeout(cmd.ctx, w.RequestTimeout)
-		plog.Debug.Printf("etcd-watcher: Initial GET %s", srvpath)
+		slog.Debug("msg", "etcd-watcher: Initial GET", "service", srvpath)
 		nrsp, err := w.Kapi.Get(ctx, srvpath, &client.GetOptions{Recursive: true})
 		// Try to whitelist some errors for retry, but abort on unknown ones.
 		switch err := err.(type) {
@@ -201,18 +202,18 @@ func (w *Watcher) doAddService(cmd *addService) {
 			case client.ErrorCodeKeyNotFound:
 				// Not really an error, treat as success.
 			case client.ErrorCodeUnauthorized:
-				plog.Error.Printf("etcd-watcher: %v", err)
+				slog.Error("msg", "etcd-watcher: unauthorized", "error", err)
 				cmd.err = err
 			default:
 				retry = true
-				plog.Warning.Printf("etcd-watcher: %v", err)
+				slog.Warning("msg", "etcd-watcher: Client error", "error", err)
 			}
 			if w.index == 0 {
 				w.index = err.Index
 			}
 		case *client.ClusterError:
 			// Assume this is a temporary error such as a 500 response.
-			plog.Warning.Printf("etcd-watcher: %v", err)
+			slog.Warning("msg", "etcd-watcher: Cluster error", "error", err)
 			retry = true
 			// Check for TLS error though.
 			for _, e := range err.Errors {
@@ -231,12 +232,12 @@ func (w *Watcher) doAddService(cmd *addService) {
 			if err == context.DeadlineExceeded {
 				retry = true
 			} else {
-				plog.Warning.Printf("etcd-watcher: Initial GET unknown error (%T): %v", err, err)
+				slog.Warning("msg", "etcd-watcher: Initial GET unknown error", "type", fmt.Sprintf("%T", err), "error", err)
 				cmd.err = err
 			}
 		}
 		if retry {
-			plog.Info.Printf("etcd-watcher: Initial fetch failed, retrying.")
+			slog.Info("msg", "etcd-watcher: Initial fetch failed, retrying.")
 			// Waiting here should give a default timeout interval.
 			// Also detect parent context exit.
 			select {
@@ -269,7 +270,7 @@ func (w *Watcher) handleResponse(rsp *client.Response, flush bool) {
 		w.index = rsp.Index
 	}
 	if flush {
-		plog.Debug.Printf("etcd-watcher: flush")
+		slog.Debug("msg", "etcd-watcher: flush")
 		for _, conn := range w.conns {
 			conn.lastIndex = w.index
 			conn.channel <- sdr.Message{Index: w.index, Type: sdr.Flush}
@@ -281,7 +282,7 @@ func (w *Watcher) handleResponse(rsp *client.Response, flush bool) {
 	case "expire", "delete":
 		w.handleDelete(rsp.Node)
 	default:
-		plog.Error.Printf("etcd-watcher: Unexpected action %s", rsp.Action)
+		slog.Error("msg", "etcd-watcher: Unexpected action", "action", rsp.Action)
 	}
 	for _, conn := range w.conns {
 		if conn.lastIndex == w.index {
