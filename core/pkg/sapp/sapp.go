@@ -120,7 +120,7 @@ func (s *Sapp) AclMiddleware(h http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		if !s.Acl.CheckRequest(req) {
-			slog.Error("msg", "Request URL forbidden by ACL", "url", req.URL)
+			slog.Error("Request URL forbidden by ACL", "url", req.URL)
 			http.Error(rw, "Forbidden by ACL", http.StatusForbidden)
 			return
 		}
@@ -190,7 +190,7 @@ func getStrPtr(bconf bconf.Bconf) *string {
 }
 
 func initAclFromBconf(ac *acl.Acl, bconf bconf.Bconf) {
-	slog.Info("msg", "Adding ACL from bconf")
+	slog.Info("Adding ACL from bconf")
 	ac.Acl = nil
 	for _, b := range bconf.Slice() {
 		var entry acl.Access
@@ -198,14 +198,14 @@ func initAclFromBconf(ac *acl.Acl, bconf bconf.Bconf) {
 		if m := getStrPtr(b.Get("method")); m != nil {
 			entry.Method = *m
 		} else {
-			slog.Error("msg", "Method not found in ACL, skipping")
+			slog.Error("Method not found in ACL, skipping")
 			continue
 		}
 
 		if p := getStrPtr(b.Get("path")); p != nil {
 			entry.Path = *p
 		} else {
-			slog.Error("msg", "Path not found in ACL, skipping")
+			slog.Error("Path not found in ACL, skipping")
 			continue
 		}
 

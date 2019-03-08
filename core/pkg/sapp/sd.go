@@ -26,7 +26,7 @@ func registerService(kapi client.KeysAPI, ttl time.Duration, service, hostkey, h
 		newdir = true
 	}
 	if err != nil {
-		slog.Error("msg", "Error updating directory", "error", err)
+		slog.Error("Error updating directory", "error", err)
 		newdir = true
 	}
 
@@ -39,7 +39,7 @@ func registerService(kapi client.KeysAPI, ttl time.Duration, service, hostkey, h
 		if cerr, ok := err.(client.Error); ok && cerr.Code == client.ErrorCodeNodeExist {
 			// Means the prevExist check failed, which is ok.
 		} else {
-			slog.Error("msg", "Error setting config in etcd", "error", err)
+			slog.Error("Error setting config in etcd", "error", err)
 		}
 	}
 
@@ -57,7 +57,7 @@ func registerService(kapi client.KeysAPI, ttl time.Duration, service, hostkey, h
 	if newval {
 		_, err = kapi.Set(context.Background(), dir+"/health", health, nil)
 		if err != nil {
-			slog.Error("msg", "Error setting health in etcd", "error", err)
+			slog.Error("Error setting health in etcd", "error", err)
 		}
 	}
 }
@@ -68,7 +68,7 @@ func unregisterService(kapi client.KeysAPI, service, hostkey string) {
 
 	_, err := kapi.Delete(context.Background(), dir, &client.DeleteOptions{Recursive: true, Dir: true})
 	if err != nil {
-		slog.Error("msg", "Error deleting service in etcd", "error", err)
+		slog.Error("Error deleting service in etcd", "error", err)
 	}
 }
 
@@ -76,7 +76,7 @@ func hostkeyRandom() string {
 	var id [16]byte
 	n, err := rand.Read(id[:])
 	if err != nil {
-		slog.Critical("msg", "Failed to generate random hostkey", "error", err)
+		slog.Critical("Failed to generate random hostkey", "error", err)
 		panic("Failed to generate random hostkey")
 	}
 	if n != len(id) {
@@ -95,13 +95,13 @@ func (s *Sapp) healthCheck() (health string) {
 	// XXX - should be overridable from config
 	url := s.healthCheckEndpoint
 	if url == "" {
-		slog.Info("msg", "No healthcheck url configured")
+		slog.Info("No healthcheck url configured")
 		return "down"
 	}
 
 	resp, err := s.healthCheckClient.Get(url)
 	if err != nil {
-		slog.Warning("msg", "Error checking health, assuming service is down. ", "error", err)
+		slog.Warning("Error checking health, assuming service is down. ", "error", err)
 		return "down"
 	}
 	defer resp.Body.Close()

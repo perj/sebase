@@ -42,25 +42,27 @@ passed to plog-store with a generic `log` tag.
 
 ## Go
 
-Options are: `plog.Level.Printf`, `plog.LogDict`, `log.Printf`
+Options are: `plog.Level.Printf`, `plog.LogMsg`, `log.Printf`
 
 ### `plog.Level.Printf`
 
 This closely matches the `log_printf` in being easy to use for generic messages.
+However, it's often more useful to use `plog.Level.LogMsg` for more structured
+logging.
 
-### `plog.LogDict`
+### `plog.LogMsg`
 
 Example:
 
-	plog.LogDict("mymsg", "msg", "my message", "mykey", "myvalue")
+	plog.LogMsg("mymsg", "my message", "mykey", "myvalue")
 
 Use for structured/tagged logging. `mymsg` is the top level tag. Also exists
 on the levels, then the top level tag is skipped:
 
-	plog.Debug.LogDict("msg", "my message", "mykey", "myvalue")
+	plog.Debug.LogMsg("my message", "mykey", "myvalue")
 
-Using the "msg" key with a human readable message is the convention when using
-level based logging, but can be skipped for custom tags.
+The first argument is a human readable message. If you want to skip that you
+can use LogDict or Log instead.
 
 There are other options in plog as well, such as `plog.Log` if you wish to log
 any single value, or `plog.Default.OpenDict` / `OpenList` to open sub contexts.

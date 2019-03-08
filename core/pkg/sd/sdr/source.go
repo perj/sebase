@@ -86,7 +86,7 @@ func (sdr *Registry) AddSources(conf bconf.Bconf) (n int, err error) {
 			errs = append(errs, err)
 		} else if sval != nil {
 			sdr.sources[skey] = sval
-			slog.Info("msg", "Sd registry source added", "type", src.SdrName(), "value", value)
+			slog.Info("Sd registry source added", "type", src.SdrName(), "value", value)
 			n++
 		}
 	}

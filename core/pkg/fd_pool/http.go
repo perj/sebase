@@ -9,8 +9,8 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/schibsted/sebase/util/pkg/slog"
 	"github.com/schibsted/sebase/util/pkg/sbalance"
+	"github.com/schibsted/sebase/util/pkg/slog"
 )
 
 type HttpConn struct {
@@ -30,7 +30,7 @@ func HttpRequest(ctx context.Context, conn NetConn, tlsconf *tls.Config, req *ht
 		if err == nil {
 			return hc, nil
 		}
-		slog.Error("msg", "Failed to send HTTP request", "error", err)
+		slog.Error("Failed to send HTTP request", "error", err)
 		err = conn.Next(ctx, sbalance.Fail)
 		if err != nil {
 			return nil, err
