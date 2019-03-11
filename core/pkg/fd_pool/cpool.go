@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"runtime"
+	"strconv"
 	"syscall"
 	"time"
 	"unsafe"
@@ -87,12 +88,24 @@ func NewCPool(sdr *CSdRegistry) *CPool {
 
 // Calls AddVtree with vtree from conf. Will panic if it doesn't
 // support Vtree creation.
+// Deprecated due to confusing name. AddBconf is the same function.
 func (p *CPool) AddConf(ctx context.Context, conf bconf.Bconf) (string, error) {
+	return p.AddBconf(ctx, conf)
+}
+
+// Calls AddVtree with vtree from conf. If conf can't create a Vtree directly
+// BconfConfig and AddConfig will be used to create one.
+// Ctx is currently ignored in this call.
+func (p *CPool) AddBconf(ctx context.Context, conf bconf.Bconf) (string, error) {
 	// Ignoring ctx
 	type vt interface {
 		Vtree() *vtree.Vtree
 	}
-	return p.AddVtree(conf.(vt).Vtree())
+	bvt, ok := conf.(vt)
+	if ok {
+		return p.AddVtree(bvt.Vtree())
+	}
+	return p.AddConfig(ctx, BconfConfig(conf))
 }
 
 // Add a service to the pool from a vtree. The service name as specified
@@ -106,6 +119,68 @@ func (p *CPool) AddVtree(vt *vtree.Vtree) (string, error) {
 		return "", fdPoolError(ret)
 	}
 	return C.GoString(rs), nil
+}
+
+// AddConfig creates a Vtree from config and calls AddVtree.
+// Currently ignores ServiceDiscovery value which is a bug.
+func (p *CPool) AddConfig(ctx context.Context, config *ServiceConfig) (string, error) {
+	var keys []string
+	var values []vtree.VtreeValue
+
+	var hk []string
+	var hv []vtree.VtreeValue
+	for k, host := range config.Hosts {
+		h := make(map[string]vtree.VtreeValue)
+		for pk, pv := range host.Ports {
+			h[pk] = pv
+		}
+		h["name"] = host.Name
+		h["cost"] = strconv.Itoa(host.Cost)
+		if host.Disabled {
+			h["disabled"] = "1"
+		}
+		hk = append(hk, k)
+		hv = append(hv, vtree.VtreeBuildKeyvalsMap(h).Vtree())
+	}
+	if len(hk) > 0 {
+		keys = append(keys, "host")
+		values = append(values, vtree.VtreeBuildKeyvals(vtree.VktDict, hk, hv).Vtree())
+	}
+
+	if config.Service != "" {
+		keys = append(keys, "service")
+		values = append(values, config.Service)
+	}
+
+	if config.ConnectTimeout != 0 {
+		keys = append(keys, "connect_timeout")
+		values = append(values, strconv.FormatInt(int64(config.ConnectTimeout/time.Millisecond), 10))
+	}
+	if config.Retries != 0 {
+		keys = append(keys, "retries")
+		values = append(values, strconv.Itoa(config.Retries))
+	}
+	keys = append(keys, "strat")
+	switch config.Strat {
+	case sbalance.StratHash:
+		values = append(values, "hash")
+	case sbalance.StratRandom:
+		values = append(values, "random")
+	default: // StratSeq
+		values = append(values, "seq")
+	}
+	if config.FailCost != 0 {
+		keys = append(keys, "failcost")
+		values = append(values, strconv.Itoa(config.FailCost))
+	}
+	if config.SoftFailCost != 0 {
+		keys = append(keys, "tempfailcost")
+		values = append(values, strconv.Itoa(config.SoftFailCost))
+	}
+
+	vt := vtree.VtreeBuildKeyvals(vtree.VktDict, keys, values).Vtree()
+	defer vt.Close()
+	return p.AddVtree(vt)
 }
 
 // Same as AddVtree, but with additional hints for getaddrinfo.

@@ -5,6 +5,7 @@ package fd_pool
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,7 +42,7 @@ func initialWait(ctx context.Context, srv *fdService, d time.Duration) {
 }
 
 func (p *GoPool) readSd(srvname string, srv *fdService) {
-	conf := &bconf.Node{}
+	hosts := make(map[string]*HostConfig)
 	initial := true
 	for {
 		msg, ok := <-srv.sdConn.Channel()
@@ -51,23 +52,32 @@ func (p *GoPool) readSd(srvname string, srv *fdService) {
 		switch {
 		case msg.Type == sdr.EndOfBatch:
 			slog.Info("fd-pool: SD updating service", "service", srvname)
-			l, _ := p.UpdateHosts(context.Background(), srvname, conf)
+			l, _ := p.UpdateHostsConfig(context.Background(), srvname, hosts)
 			if initial && l > 0 {
 				close(srv.sdConnInitial)
 				initial = false
 			}
 		case msg.Type == sdr.Update && msg.Key == "config":
-			parseConfig(conf, msg.HostKey, p.sdReg.Host, p.sdReg.Appl, msg.Value)
+			parseConfig(hosts, msg.HostKey, p.sdReg.Host, p.sdReg.Appl, msg.Value)
 		case msg.Type == sdr.Update && msg.Key == "health":
-			parseHealth(conf, msg.HostKey, msg.Value)
+			parseHealth(hosts, msg.HostKey, msg.Value)
 		case msg.Type == sdr.Delete:
-			if msg.Key != "" {
-				conf.Delete("host", msg.HostKey, msg.Key)
-			} else {
-				conf.Delete("host", msg.HostKey)
+			if host := hosts[msg.HostKey]; host != nil {
+				switch msg.Key {
+				case "":
+					delete(hosts, msg.HostKey)
+				case "name":
+					host.Name = ""
+				case "cost":
+					host.Cost = 0
+				case "health":
+					host.Disabled = true
+				default:
+					delete(host.Ports, msg.Key)
+				}
 			}
 		case msg.Type == sdr.Flush:
-			conf = &bconf.Node{}
+			hosts = make(map[string]*HostConfig)
 		}
 	}
 }
@@ -75,7 +85,7 @@ func (p *GoPool) readSd(srvname string, srv *fdService) {
 // Parse a json encoded host node config, with host and appl prefix.
 // Keys are on the form *.*.x (but json encoded, not bconf), and the
 // valid keys are those for a single node as given in common.go.
-func parseConfig(dst *bconf.Node, hostkey, host, appl, src string) {
+func parseConfig(hosts map[string]*HostConfig, hostkey, host, appl, src string) {
 	// XXX possibly the last value could be a dictionary/array?
 	var data map[string]map[string]map[string]string
 	err := json.Unmarshal([]byte(src), &data)
@@ -83,29 +93,44 @@ func parseConfig(dst *bconf.Node, hostkey, host, appl, src string) {
 		slog.Error("Error parsing SD config", "error", err)
 		return
 	}
-	// Always add the disabled key, but don't touch a pre-set value.
-	disabled := dst.Get("host", hostkey, "disabled").String("1")
-	dst.Delete("host", hostkey)
+	node := hosts[hostkey]
+	if node == nil {
+		// Default disabled to true, but keep any previous value.
+		node = &HostConfig{Disabled: true}
+		hosts[hostkey] = node
+	}
+	node.Ports = make(map[string]string)
+	node.Cost = 0
+	node.Name = ""
 	for _, kk := range [][2]string{{"*", "*"}, {"*", appl}, {host, "*"}, {host, appl}} {
 		if data[kk[0]] != nil && data[kk[0]][kk[1]] != nil {
 			for k, v := range data[kk[0]][kk[1]] {
-				dst.Add("host", hostkey, k)(v)
+				switch k {
+				case "name":
+					node.Name = v
+				case "cost":
+					node.Cost, _ = strconv.Atoi(v)
+				default:
+					node.Ports[k] = v
+				}
 			}
 		}
-	}
-	if disabled != "" {
-		dst.Add("host", hostkey, "disabled")(disabled)
 	}
 }
 
 // Parse the health value into a disabled conf key. The value should be
 // either "up" or "down".
-func parseHealth(dst *bconf.Node, hostkey, src string) {
-	v := "1"
+func parseHealth(hosts map[string]*HostConfig, hostkey, src string) {
+	v := true
 	src = strings.TrimSpace(src)
 	slog.Debug("New health for host", "hostkey", hostkey, "value", src)
 	if src == "up" {
-		v = "0"
+		v = false
 	}
-	dst.Add("host", hostkey, "disabled")(v)
+	node := hosts[hostkey]
+	if node == nil {
+		node = &HostConfig{}
+		hosts[hostkey] = node
+	}
+	node.Disabled = v
 }

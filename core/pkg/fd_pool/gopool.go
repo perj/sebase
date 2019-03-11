@@ -68,6 +68,8 @@ type fdService struct {
 	sblock sync.RWMutex
 
 	DialContext func(ctx context.Context, nw, addr string) (net.Conn, error)
+	NetNetwork  string
+	UnixNetwork string
 
 	sdConn        sdr.SourceConn
 	sdConnInitial chan struct{}
@@ -188,30 +190,53 @@ func (p *GoPool) getService(srvname string, retries int, connectTimeout time.Dur
 			SoftFailCost: DefaultSoftFailCost,
 			Strat:        DefaultStrat,
 		},
+		NetNetwork:  "tcp",
+		UnixNetwork: "unix",
 		DialContext: dialer.DialContext,
 	}
 	p.services[srvname] = srv
 	return srv
 }
 
-// Add config based nodes to the pool. Uses default stream socket types.
+// Add bconf config based nodes to the pool. Uses default stream socket types.
+// Deprecated due to confusing name. AddBconf is the same function.
 func (p *GoPool) AddConf(ctx context.Context, conf bconf.Bconf) (string, error) {
-	return p.AddConfNetwork(ctx, conf, "tcp", "unix")
+	return p.AddBconfNetwork(ctx, conf, "tcp", "unix")
+}
+
+// Add bconf config based nodes to the pool. Uses default stream socket types.
+func (p *GoPool) AddBconf(ctx context.Context, conf bconf.Bconf) (string, error) {
+	return p.AddBconfNetwork(ctx, conf, "tcp", "unix")
 }
 
 // Like AddConf but allows to specify the network parameter later given to Dial.
 // ipnetw is used for ports and unixnetw is used for paths.
-// AddConf defaults to "tcp" and "unix".
+// Deprecated due to confusing name. AddBconfNetwork is the same function.
 func (p *GoPool) AddConfNetwork(ctx context.Context, conf bconf.Bconf, ipnetw, unixnetw string) (string, error) {
-	srvname := conf.Get("service").String("")
+	return p.AddBconfNetwork(ctx, conf, ipnetw, unixnetw)
+}
+
+// Like AddBconf but allows to specify the network parameter later given to Dial.
+// ipnetw is used for ports and unixnetw is used for paths.
+// Creates a Config and calls AddConfig.
+func (p *GoPool) AddBconfNetwork(ctx context.Context, conf bconf.Bconf, ipnetw, unixnetw string) (string, error) {
+	config := BconfConfig(conf)
+	config.NetNetwork = ipnetw
+	config.UnixNetwork = unixnetw
+	return p.AddConfig(ctx, config)
+}
+
+// Add a service based on a configuration struct. The conf values are copied,
+// the struct can be discarded or reused after the call returns.
+func (p *GoPool) AddConfig(ctx context.Context, config *ServiceConfig) (string, error) {
+	if config == nil {
+		return "", EmptyConfig
+	}
+	srvname := config.Service
 	canSd := true
 	if srvname == "" {
 		// This won't match the C version, but I think that's fine.
-		m := conf.Get("host").ToMap()
-		if m == nil {
-			return "", EmptyConfig
-		}
-		data, err := json.Marshal(&m)
+		data, err := json.Marshal(config.Hosts)
 		if err != nil {
 			return "", err
 		}
@@ -220,11 +245,7 @@ func (p *GoPool) AddConfNetwork(ctx context.Context, conf bconf.Bconf, ipnetw, u
 		srvname = fmt.Sprintf("0x%x", h.Sum32())
 		canSd = false
 	}
-	to := DefaultConnectTimeout
-	if conf.Get("connect_timeout").Valid() {
-		to = time.Duration(conf.Get("connect_timeout").Int(0)) * time.Millisecond
-	}
-	srv := p.getService(srvname, conf.Get("retries").Int(1), to)
+	srv := p.getService(srvname, config.GetRetries(), config.GetConnectTimeout())
 	if srv.Len() > 0 {
 		// Assume already configured.
 		return srvname, nil
@@ -232,21 +253,19 @@ func (p *GoPool) AddConfNetwork(ctx context.Context, conf bconf.Bconf, ipnetw, u
 	srv.sblock.Lock()
 	defer srv.sblock.Unlock()
 
-	switch conf.Get("strat").String("") {
-	case "hash":
-		srv.Strat = sbalance.StratHash
-	case "random":
-		srv.Strat = sbalance.StratRandom
-	case "seq":
-		srv.Strat = sbalance.StratSeq
+	srv.Strat = config.Strat
+	srv.FailCost = config.GetFailCost()
+	srv.SoftFailCost = config.GetSoftFailCost()
+	if config.DialContext != nil {
+		srv.DialContext = config.DialContext
 	}
-	srv.FailCost = conf.Get("failcost").Int(DefaultFailCost)
-	srv.SoftFailCost = conf.Get("tempfailcost").Int(DefaultSoftFailCost)
+	srv.NetNetwork = config.GetNetNetwork()
+	srv.UnixNetwork = config.GetUnixNetwork()
 
-	err := p.populateFromConf(ctx, srv.Service, conf, ipnetw, unixnetw)
+	err := p.populateFromConf(ctx, srv.Service, config.Hosts, srv.NetNetwork, srv.UnixNetwork)
 
 	if canSd && srv.sdConn == nil && p.sdReg != nil {
-		serr := p.connectSd(ctx, srvname, srv, conf)
+		serr := p.connectSd(ctx, srvname, srv, config.ServiceDiscovery)
 		if serr == nil {
 			initialWait(ctx, srv, InitialWaitDuration)
 		}
@@ -283,33 +302,26 @@ func (p *GoPool) AddSingle(ctx context.Context, service, netw, addr string, retr
 	return nil
 }
 
-// Populate a specific sbalance from the conf. Ports are added to the pools as needed
-// and connected to the added nodes. IPs are resolved and each IP is considered a
-// separte node, even if they come from the same DNS lookup. Thus there might be more
-// than one node with the same key.
+// Populate a specific sbalance from the host configs. Ports are added to the
+// pools as needed and connected to the added nodes. IPs are resolved and each
+// IP is considered a separte node, even if they come from the same DNS lookup.
+// Thus there might be more than one node with the same key.
 // Might return an error from DNS lookup.
-func (p *GoPool) populateFromConf(ctx context.Context, sb *sbalance.Service, conf bconf.Bconf, ipnetw, unixnetw string) error {
+func (p *GoPool) populateFromConf(ctx context.Context, sb *sbalance.Service, hosts map[string]*HostConfig, ipnetw, unixnetw string) error {
 	var err error
-	for _, h := range conf.Get("host").Slice() {
-		if h.Get("disabled").Bool(false) {
+	for key, h := range hosts {
+		if h.Disabled {
 			continue
 		}
-		host := h.Get("name").String("")
 
 		// Map to create nodes based on IP. This is not stable on the DNS
 		// resolver order, but I don't think that matters much.
 		ports := make(map[string][]fdPort)
 		var addrs []string
 		var rerr error
-		for _, pval := range h.Slice() {
-			if !pval.Leaf() {
-				continue
-			}
-			pname := pval.Key()
+		for pname, port := range h.Ports {
 			if strings.HasSuffix(pname, "port") {
-				// No need to resolve the port, just keep the string.
-				port := pval.String("")
-				if host == "" || port == "" {
+				if h.Name == "" || port == "" {
 					continue
 				}
 
@@ -319,7 +331,7 @@ func (p *GoPool) populateFromConf(ctx context.Context, sb *sbalance.Service, con
 					// net.LookupHost. The others just return a single one.
 					// Seems weird for a modern library, let's hope it's
 					// improved in the future.
-					addrs, rerr = net.DefaultResolver.LookupHost(ctx, host)
+					addrs, rerr = net.DefaultResolver.LookupHost(ctx, h.Name)
 					if rerr != nil {
 						// Since host is global for all ports we break
 						// here to handle the error.
@@ -332,7 +344,7 @@ func (p *GoPool) populateFromConf(ctx context.Context, sb *sbalance.Service, con
 				}
 			} else if pname == "path" {
 				// Use default "port" name for these.
-				a := pval.String("")
+				a := port
 				ports[a] = append(ports[a], fdPort{"port", unixnetw, a})
 			}
 		}
@@ -340,7 +352,7 @@ func (p *GoPool) populateFromConf(ctx context.Context, sb *sbalance.Service, con
 			err = rerr
 		}
 
-		p.addPorts(sb, h.Key(), h.Get("cost").Int(1), ports)
+		p.addPorts(sb, key, h.Cost, ports)
 	}
 	return err
 }
@@ -413,15 +425,27 @@ func (pool *GoPool) NewConn(ctx context.Context, service, portKey, remoteAddr st
 	return c.get(ctx, sbalance.Start)
 }
 
-// Update the nodes for a service, e.g. when a new node is detected via
-// Service Discovery. The conf passed should have a top level "host" key
-// similar to AddConf. At least one enabled node must be in the config,
-// or the update won't be made. This is to protect from misconfigurations.
+// Update the nodes for a service, using a bconf node.
+// Deprecated, same as UpdateHostsBconf.
+func (pool *GoPool) UpdateHosts(ctx context.Context, service string, conf bconf.Bconf) (int, error) {
+	return pool.UpdateHostsBconf(ctx, service, conf)
+}
+
+// Update the nodes for a service, using a bconf node.
+// Creates a ServiceConfig and calls UpdateHostsConfig.
+func (pool *GoPool) UpdateHostsBconf(ctx context.Context, service string, conf bconf.Bconf) (int, error) {
+	return pool.UpdateHostsConfig(ctx, service, BconfConfig(conf).Hosts)
+}
+
+// Update the nodes for a service, e.g. when a new node is detected via Service
+// Discovery. The hosts given replace the old ones for the service.  At least
+// one enabled node must be in hosts or the update won't be made, this is to
+// protect from misconfigurations.
 // Returns the number of sb nodes added, i.e. the number of non-disabled
 // IP addresses found. If 0 is returned nothing was changed.
 // Returns NoSuchService if the service given doesn't exist. Might also
 // return errors from DNS lookup and similar.
-func (pool *GoPool) UpdateHosts(ctx context.Context, service string, conf bconf.Bconf) (int, error) {
+func (pool *GoPool) UpdateHostsConfig(ctx context.Context, service string, hosts map[string]*HostConfig) (int, error) {
 	srv := pool.findService(service)
 	if srv == nil {
 		return 0, NoSuchService
@@ -432,7 +456,7 @@ func (pool *GoPool) UpdateHosts(ctx context.Context, service string, conf bconf.
 		SoftFailCost: srv.Service.SoftFailCost,
 		Strat:        srv.Service.Strat,
 	}
-	err := pool.populateFromConf(ctx, sb, conf, "tcp", "unix")
+	err := pool.populateFromConf(ctx, sb, hosts, srv.NetNetwork, srv.UnixNetwork)
 	if err != nil {
 		return 0, err
 	}

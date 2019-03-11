@@ -11,6 +11,8 @@ import (
 	"github.com/schibsted/sebase/vtree/pkg/bconf"
 )
 
+// Interface covering both GoPool and CPool.
+// AddConf is deprected and will be removed in 2.0
 type FdPool interface {
 	Close() error
 
@@ -21,6 +23,14 @@ type FdPool interface {
 	AddSingle(ctx context.Context, service, netw, addr string, retries int, connectTimeout time.Duration) error
 
 	NewConn(ctx context.Context, service, portKey, remoteAddr string) (NetConn, error)
+}
+
+// Interface similar to FdPool but containing the new AddConfig function.
+// In 2.0 this will be merged into FdPool.
+type FdPoolConfig interface {
+	FdPool
+
+	AddConfig(ctx context.Context, config *ServiceConfig) (string, error)
 }
 
 // Extends net.Conn with functions to move to next node, put back the

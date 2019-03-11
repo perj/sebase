@@ -41,7 +41,7 @@ type Sapp struct {
 	Bconf bconf.MutBconf
 	// fd_pool accessible after initialization
 	UseCPool bool
-	Pool     fd_pool.FdPool
+	Pool     fd_pool.FdPoolConfig
 
 	// TLS config read from config file during init, if any. For some reason
 	// it doesn't work to use the same tls.Config for both the client and
