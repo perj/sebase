@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/schibsted/sebase/core/pkg/sd/sdr"
+	"github.com/schibsted/sebase/util/pkg/slog"
 	"github.com/schibsted/sebase/vtree/pkg/bconf"
 )
 
@@ -49,7 +50,7 @@ func (p *GoPool) readSd(srvname string, srv *fdService) {
 		}
 		switch {
 		case msg.Type == sdr.EndOfBatch:
-			InfoLog.Printf("fd-pool: SD updating %s", srvname)
+			slog.Info("fd-pool: SD updating service", "service", srvname)
 			l, _ := p.UpdateHosts(context.Background(), srvname, conf)
 			if initial && l > 0 {
 				close(srv.sdConnInitial)
@@ -79,7 +80,7 @@ func parseConfig(dst *bconf.Node, hostkey, host, appl, src string) {
 	var data map[string]map[string]map[string]string
 	err := json.Unmarshal([]byte(src), &data)
 	if err != nil {
-		ErrLog.Printf("Error parsing SD config: %v", err)
+		slog.Error("Error parsing SD config", "error", err)
 		return
 	}
 	// Always add the disabled key, but don't touch a pre-set value.
@@ -102,7 +103,7 @@ func parseConfig(dst *bconf.Node, hostkey, host, appl, src string) {
 func parseHealth(dst *bconf.Node, hostkey, src string) {
 	v := "1"
 	src = strings.TrimSpace(src)
-	DebugLog.Printf("Hostkey %s new health %s", hostkey, src)
+	slog.Debug("New health for host", "hostkey", hostkey, "value", src)
 	if src == "up" {
 		v = "0"
 	}

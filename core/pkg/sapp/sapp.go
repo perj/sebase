@@ -25,6 +25,7 @@ import (
 	_ "github.com/schibsted/sebase/core/pkg/sd/etcd"
 	"github.com/schibsted/sebase/core/pkg/sd/sdr"
 	"github.com/schibsted/sebase/plog/pkg/plog"
+	"github.com/schibsted/sebase/util/pkg/slog"
 	"github.com/schibsted/sebase/vtree/pkg/bconf"
 )
 
@@ -83,7 +84,7 @@ func (s *Sapp) DefaultServer() *http.Server {
 	handler := s.AclMiddleware(srv.Handler)
 
 	errorLogger := func(m map[string]interface{}) {
-		plog.Default.Log("http_request", m)
+		plog.Log("http_request", m)
 	}
 
 	infoLogger := func(_ map[string]interface{}) {}
@@ -119,7 +120,7 @@ func (s *Sapp) AclMiddleware(h http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		if !s.Acl.CheckRequest(req) {
-			plog.Error.Printf("Request URL %v forbidden by ACL", req.URL)
+			slog.Error("Request URL forbidden by ACL", "url", req.URL)
 			http.Error(rw, "Forbidden by ACL", http.StatusForbidden)
 			return
 		}
@@ -189,7 +190,7 @@ func getStrPtr(bconf bconf.Bconf) *string {
 }
 
 func initAclFromBconf(ac *acl.Acl, bconf bconf.Bconf) {
-	plog.Info.Printf("Adding ACL from bconf")
+	slog.Info("Adding ACL from bconf")
 	ac.Acl = nil
 	for _, b := range bconf.Slice() {
 		var entry acl.Access
@@ -197,14 +198,14 @@ func initAclFromBconf(ac *acl.Acl, bconf bconf.Bconf) {
 		if m := getStrPtr(b.Get("method")); m != nil {
 			entry.Method = *m
 		} else {
-			plog.Error.Printf("method not found in ACL, skipping")
+			slog.Error("Method not found in ACL, skipping")
 			continue
 		}
 
 		if p := getStrPtr(b.Get("path")); p != nil {
 			entry.Path = *p
 		} else {
-			plog.Error.Printf("path not found in ACL, skipping")
+			slog.Error("Path not found in ACL, skipping")
 			continue
 		}
 

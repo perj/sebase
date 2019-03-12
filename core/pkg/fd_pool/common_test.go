@@ -9,13 +9,15 @@ import (
 	"net"
 	"net/http"
 	"testing"
+
+	"github.com/schibsted/sebase/util/pkg/slog"
 )
 
 var l net.Listener
 var port int
 
 func init() {
-	DebugLog = defaultLogger(true)
+	slog.Debug.SetLogPrintf()
 
 	l, err := net.Listen("tcp", ":0")
 	if err != nil {

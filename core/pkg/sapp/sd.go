@@ -8,12 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"time"
 
 	"github.com/coreos/etcd/client"
+	"github.com/schibsted/sebase/util/pkg/slog"
 )
 
 func registerService(kapi client.KeysAPI, ttl time.Duration, service, hostkey, health, prevHealth, config, prevConfig string) {
@@ -26,7 +26,7 @@ func registerService(kapi client.KeysAPI, ttl time.Duration, service, hostkey, h
 		newdir = true
 	}
 	if err != nil {
-		log.Print("Error updating directory: ", err)
+		slog.Error("Error updating directory", "error", err)
 		newdir = true
 	}
 
@@ -39,7 +39,7 @@ func registerService(kapi client.KeysAPI, ttl time.Duration, service, hostkey, h
 		if cerr, ok := err.(client.Error); ok && cerr.Code == client.ErrorCodeNodeExist {
 			// Means the prevExist check failed, which is ok.
 		} else {
-			log.Print(err)
+			slog.Error("Error setting config in etcd", "error", err)
 		}
 	}
 
@@ -57,7 +57,7 @@ func registerService(kapi client.KeysAPI, ttl time.Duration, service, hostkey, h
 	if newval {
 		_, err = kapi.Set(context.Background(), dir+"/health", health, nil)
 		if err != nil {
-			log.Print(err)
+			slog.Error("Error setting health in etcd", "error", err)
 		}
 	}
 }
@@ -68,7 +68,7 @@ func unregisterService(kapi client.KeysAPI, service, hostkey string) {
 
 	_, err := kapi.Delete(context.Background(), dir, &client.DeleteOptions{Recursive: true, Dir: true})
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("Error deleting service in etcd", "error", err)
 	}
 }
 
@@ -76,10 +76,11 @@ func hostkeyRandom() string {
 	var id [16]byte
 	n, err := rand.Read(id[:])
 	if err != nil {
-		log.Fatal(err)
+		slog.Critical("Failed to generate random hostkey", "error", err)
+		panic("Failed to generate random hostkey")
 	}
 	if n != len(id) {
-		log.Fatal("Short read without error")
+		panic("Short read without error")
 	}
 	id[6] = (id[6] & 0x0F) | 0x40
 	id[8] = (id[8] & 0x3F) | 0x80
@@ -94,13 +95,13 @@ func (s *Sapp) healthCheck() (health string) {
 	// XXX - should be overridable from config
 	url := s.healthCheckEndpoint
 	if url == "" {
-		log.Print("No healthcheck url configured")
+		slog.Info("No healthcheck url configured")
 		return "down"
 	}
 
 	resp, err := s.healthCheckClient.Get(url)
 	if err != nil {
-		log.Print("Error checking health, assuming service is down. ", err)
+		slog.Warning("Error checking health, assuming service is down. ", "error", err)
 		return "down"
 	}
 	defer resp.Body.Close()

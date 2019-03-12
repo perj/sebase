@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/schibsted/sebase/plog/internal/pkg/plogproto"
+	"github.com/schibsted/sebase/util/pkg/slog"
 )
 
 // A plog context is an object opened in the log server. The server will
@@ -157,34 +158,28 @@ func (ctx *Plog) LogAsString(key string, value []byte) {
 	}
 }
 
-// Log a JSON dictionary from the variadic arguments, alternating keys and
-// values, key first. Note that the first argument is not part of the
-// dictionary, it's the message key.
+// Log a JSON dictionary from the variadic arguments, which are parsed with
+// slog.KVsMap.  Note that the first argument is not part of the dictionary,
+// it's the message key.
 // Might return errors from json.Marshal.
 func (ctx *Plog) LogDict(key string, kvs ...interface{}) error {
 	if ctx == nil {
 		return nil
 	}
-	return ctx.Log(key, kvsToDict(kvs))
+	return ctx.Log(key, slog.KVsMap(kvs...))
 }
 
-func kvsToDict(kvs []interface{}) map[string]interface{} {
-	m := make(map[string]interface{}, len(kvs)/2)
-	for i := 0; i < len(kvs); i += 2 {
-		var v interface{}
-		if i < len(kvs)-1 {
-			v = kvs[i+1]
-		}
-		switch k := kvs[i].(type) {
-		case string:
-			m[k] = v
-		case fmt.Stringer:
-			m[k.String()] = v
-		default:
-			m[fmt.Sprint(k)] = v
-		}
+// Log a human readable message with a JSON dictionary from the variadic
+// arguments, which are parsed with slog.KVsMap.
+// This function does not return errors. If json encoding fails it
+// converts to a string and tries again, adding a "log-error" key.
+func (ctx *Plog) LogMsg(key, msg string, kvs ...interface{}) {
+	if ctx == nil {
+		return
 	}
-	return m
+	m := slog.KVsMap(kvs...)
+	m["msg"] = msg
+	errWrap(ctx.Log, key, m)
 }
 
 // Log raw JSON encoded data in value. You must make sure the JSON is valid,

@@ -6,8 +6,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
 
+	"github.com/schibsted/sebase/util/pkg/slog"
 	"github.com/schibsted/sebase/vtree/pkg/bconf"
 )
 
@@ -86,7 +86,7 @@ func (sdr *Registry) AddSources(conf bconf.Bconf) (n int, err error) {
 			errs = append(errs, err)
 		} else if sval != nil {
 			sdr.sources[skey] = sval
-			log.Printf("Sd registry source %s at %s added", src.SdrName(), value)
+			slog.Info("Sd registry source added", "type", src.SdrName(), "value", value)
 			n++
 		}
 	}

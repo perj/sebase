@@ -157,10 +157,17 @@ func (l Level) Panicf(format string, v ...interface{}) {
 	panic(fmt.Sprintf(format, v...))
 }
 
-// Convience function that calls LogDict with l.Code() as key. This breaks
-// using strings as values for the standard log levels but that's just a
-// recommendation regardless. As a new recommendation, use a "msg" key
-// with a human readable message when using this function.
+// Convience function that calls LogDict with l.Code() as key. This is
+// deprecated in favor of LogMsg which enforces a human readable message.
+// This function will be removed in version 2.0.
 func (l Level) LogDict(kvs ...interface{}) error {
 	return LogDict(l.Code(), kvs...)
+}
+
+// Convience function that calls LogMsg with l.Code() as key. The msg
+// parameter contains a human readable message, while the rest are passed
+// to slog.KVsMap to convert to a dictionary.
+// This is not a printf-like function, despite the signature.
+func (l Level) LogMsg(msg string, kvs ...interface{}) {
+	LogMsg(l.Code(), msg, kvs...)
 }

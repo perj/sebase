@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/coreos/etcd/client"
+	"github.com/schibsted/sebase/util/pkg/slog"
 	"github.com/schibsted/sebase/core/pkg/sd/sdr"
-	"github.com/schibsted/sebase/plog/pkg/plog"
 	"github.com/schibsted/sebase/vtree/pkg/bconf"
 )
 
@@ -75,7 +75,7 @@ const (
 )
 
 func init() {
-	plog.Setup("etcd-test", "debug")
+	slog.Debug.SetLogPrintf()
 }
 
 type handler struct {

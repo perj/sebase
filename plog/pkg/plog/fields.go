@@ -4,15 +4,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+
+	"github.com/schibsted/sebase/util/pkg/slog"
 )
 
-type Fields map[string]interface{}
+type Fields = slog.KV
 
 // An interface with functions for level based logging. Plog context
 // conform to this interface, as well as the WithFields return value.
 type Logger interface {
 	Log(key string, value interface{}) error
 	LogDict(key string, kvs ...interface{}) error
+	LogMsg(key string, msg string, kvs ...interface{})
 
 	LevelPrint(lvl Level, value ...interface{})
 	Emergency(value ...interface{})
@@ -43,11 +46,12 @@ type Logger interface {
 // WithFields for compatibility with logrus. If the Log function is used with
 // a map[string]interface{} value then the fields are merged with that map,
 // otherwise the value is put in the "msg" key in a dictionary with the
-// fields. LogDict is a wrapper for Log with a map[string]interface{}.
+// fields. LogDict and LogMsg are wrappers for Log with a map[string]interface{}.
+// The latter adds the msg argument with the "msg" key.
 //
 // This functions logs to Default if non-nil otherwise to FallbackWriter.
 //
-// WithKeys(...).Info(x) is equal to Info.LogDict("msg", x, ...)
+// WithKeys(...).Info(x) is equal to Info.LogMsg(x, ...)
 func WithFields(f Fields) Logger {
 	return &fielder{f, Default, true}
 }
@@ -97,7 +101,16 @@ func (f *fielder) LogDict(key string, kvs ...interface{}) error {
 	if f.Ctx == nil && !f.fallback {
 		return nil
 	}
-	return f.Log(key, kvsToDict(kvs))
+	return f.Log(key, slog.KVsMap(kvs...))
+}
+
+func (f *fielder) LogMsg(key, msg string, kvs ...interface{}) {
+	if f.Ctx == nil && !f.fallback {
+		return
+	}
+	m := slog.KVsMap(kvs...)
+	m["msg"] = msg
+	errWrap(f.Log, key, m)
 }
 
 func (f *fielder) LevelPrint(lvl Level, value ...interface{}) {
