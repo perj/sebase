@@ -12,12 +12,12 @@
 // you call conn.Next() with either sbalance.Fail or sbalannce.TempFail and
 // then keep using the connection as normal, restarting the communication.
 //
-// Normally pools are setup with multiple nodes from bconf or SD, which is why
-// AddConf takes a bconf node.
+// Normally pools are setup with multiple nodes from config or SD. For static
+// configuration you can use the ServiceConfig struct or bconf.
 //
-// Configuration
+// Bconf Configuration
 //
-// The configuration given to AddConf or stored in Service Discvory have the
+// The configuration given to AddBconf or stored in Service Discvory have the
 // following keys. Typically either bconf or json is used to encode. The bconf
 // syntax is shown here, while json would have recursive dictionaries.
 // Almost everything is optional, with defaults as mentioned. A host name and

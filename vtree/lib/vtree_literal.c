@@ -242,8 +242,12 @@ vtree_literal_getnode(struct vtree_chain *vchain, enum vtree_cacheable *cc, stru
 
 	*cc = VTCACHE_CANT;
 
-	if (argc == 0)
-		return vchain;
+	if (argc == 0) {
+		dst->fun = &vtree_literal_vtree;
+		dst->data = vchain->data;
+		dst->next = NULL;
+		return dst;
+	}
 
 	int idx = get_index(data, argc, argv);
 	if (idx < 0)
@@ -325,49 +329,59 @@ vtree_literal_fetch_keys_and_values(struct vtree_chain *vchain, struct vtree_key
 		return;
 	}
 
-	if (argv[0] == VTREE_LOOP) {
-		loop->len = data->len;
-		loop->type = data->type;
-
-		/* We need to hold on to any getnode destinations until we're freed. */
-		loop->list = xmalloc(sizeof (*loop->list) * data->len + sizeof(struct vtree_chain) * data->len);
-		struct vtree_chain *dsts = (struct vtree_chain*)(loop->list + data->len);
-		memset(dsts, 0, sizeof(struct vtree_chain) * data->len);
-
-		loop->cleanup = vtree_literal_cleanup_keys_and_values;
-		for (int i = 0 ; i < data->len ; i++) {
-			loop->list[i].key = data->list[i].key;
-			switch(data->list[i].type) {
-			case vkvNone:
-				loop->list[i].type = vkvNone;
-				break;
-			case vkvValue:
-				if (argc == 1) {
-					loop->list[i].type = vkvValue;
-					loop->list[i].v.value = data->list[i].v.value;
-				} else {
-					loop->list[i].type = vkvNone;
-				}
-				break;
-			case vkvNode:
-				{
-					struct vtree_chain *node = vtree_getnode_cachev(&data->list[i].v.node, cc, &dsts[i], NULL, argc - 1, argv + 1);
-					const char *v;
-
-					if (!node) {
-						loop->list[i].type = vkvNone;
-					} else if ((v = vtree_get(node, NULL))) {
-						loop->list[i].type = vkvValue;
-						loop->list[i].v.value = v;
-					} else {
-						loop->list[i].type = vkvNode;
-						loop->list[i].v.node = *node;
-					}
-				}
-				break;
-			}
+	if (argv[0] != VTREE_LOOP) {
+		// Defer to the subnode.
+		struct vtree_chain vnode = {0};
+		if (vchain->fun->getnode(vchain, cc, &vnode, 1, argv)) {
+			vnode.fun->fetch_keys_and_values(&vnode, loop, cc, argc - 1, argv + 1);
+			vtree_free(&vnode);
+		} else {
+			loop->len = 0;
+			loop->cleanup = NULL;
 		}
 		return;
+	}
+
+	loop->len = data->len;
+	loop->type = data->type;
+
+	/* We need to hold on to any getnode destinations until we're freed. */
+	loop->list = xmalloc(sizeof (*loop->list) * data->len + sizeof(struct vtree_chain) * data->len);
+	struct vtree_chain *dsts = (struct vtree_chain*)(loop->list + data->len);
+	memset(dsts, 0, sizeof(struct vtree_chain) * data->len);
+
+	loop->cleanup = vtree_literal_cleanup_keys_and_values;
+	for (int i = 0 ; i < data->len ; i++) {
+		loop->list[i].key = data->list[i].key;
+		switch(data->list[i].type) {
+		case vkvNone:
+			loop->list[i].type = vkvNone;
+			break;
+		case vkvValue:
+			if (argc == 1) {
+				loop->list[i].type = vkvValue;
+				loop->list[i].v.value = data->list[i].v.value;
+			} else {
+				loop->list[i].type = vkvNone;
+			}
+			break;
+		case vkvNode:
+			{
+				struct vtree_chain *node = vtree_getnode_cachev(&data->list[i].v.node, cc, &dsts[i], NULL, argc - 1, argv + 1);
+				const char *v;
+
+				if (!node) {
+					loop->list[i].type = vkvNone;
+				} else if ((v = vtree_get(node, NULL))) {
+					loop->list[i].type = vkvValue;
+					loop->list[i].v.value = v;
+				} else {
+					loop->list[i].type = vkvNode;
+					loop->list[i].v.node = *node;
+				}
+			}
+			break;
+		}
 	}
 }
 
