@@ -5,27 +5,29 @@ package main
 import (
 	"context"
 	"log"
+	"path"
+	"reflect"
 	"strings"
 	"time"
 
-	"github.com/coreos/etcd/client"
+	"github.com/schibsted/sebase/core/internal/pkg/etcdlight"
 )
 
-func watchEtcd(watchers map[string]client.Watcher) {
+func watchEtcd(watchers map[string]etcdlight.Watcher) {
 	type event struct {
-		srv  string
-		resp *client.Response
+		srv string
+		r   *etcdlight.Response
 	}
 	evch := make(chan event)
 	for srv, w := range watchers {
-		go func(srv string, w client.Watcher) {
+		go func(srv string, w etcdlight.Watcher) {
 			for {
-				resp, err := w.Next(context.Background())
+				r, err := w.Next(context.Background())
 				if err != nil {
 					log.Print(err)
 					time.Sleep(1 * time.Second)
 				} else {
-					evch <- event{srv, resp}
+					evch <- event{srv, r}
 				}
 			}
 		}(srv, w)
@@ -33,30 +35,27 @@ func watchEtcd(watchers map[string]client.Watcher) {
 
 	for {
 		ev := <-evch
-		resp := ev.resp
+		resp := ev.r
 		data := make(map[string]interface{})
-		path := strings.Split(strings.TrimPrefix(resp.Node.Key, "/service/"+ev.srv+"/"), "/")
-		key := path[len(path)-1]
-		if resp.Node.Value != "" && resp.Action != "delete" {
-			data["new"] = nodeValue(resp.Node.Value, key)
+		newkvs := nodeValues(resp.Values, "/service/"+ev.srv)
+		if len(newkvs) > 0 {
+			data["new"] = newkvs
 		}
 		doprint := true
 		switch {
 		case resp.Action != "update" && resp.Action != "set":
 			break
-		case resp.PrevNode != nil && resp.Node.Value == resp.PrevNode.Value:
+		case len(resp.PrevValues) > 0 && reflect.DeepEqual(resp.PrevValues, resp.Values):
 			delete(data, "new")
 			data["unchanged"] = true
 			doprint = watchall
-		case resp.PrevNode != nil:
-			data["old"] = nodeValue(resp.PrevNode.Value, key)
+		case len(resp.PrevValues) > 0:
+			data["old"] = nodeValues(resp.PrevValues, "/service/"+ev.srv)
 		}
 		if doprint {
 			envelope := map[string]interface{}{
 				resp.Action: map[string]interface{}{
-					ev.srv: map[string]interface{}{
-						path[0]: data,
-					},
+					ev.srv: data,
 				},
 			}
 			output(envelope)
@@ -64,17 +63,23 @@ func watchEtcd(watchers map[string]client.Watcher) {
 	}
 }
 
-func nodeValue(str, key string) interface{} {
-	switch key {
-	case "config":
-		v := make(map[string]interface{})
-		addConf(v, str, false)
-		return v
-	case "health":
-		v := make(map[string]interface{})
-		addCheckFiltered(v, "health", str, false)
-		return v
-	default:
-		return str
+func nodeValues(kvs []etcdlight.KV, key string) (vs []interface{}) {
+	for _, kv := range kvs {
+		if !strings.HasPrefix(kv.Key, key) {
+			continue
+		}
+		switch path.Base(kv.Key) {
+		case "config":
+			v := make(map[string]interface{})
+			addConf(v, kv.Value, false)
+			vs = append(vs, v)
+		case "health":
+			v := make(map[string]interface{})
+			addCheckFiltered(v, "health", kv.Value, false)
+			vs = append(vs, v)
+		default:
+			vs = append(vs, kv.Value)
+		}
 	}
+	return
 }

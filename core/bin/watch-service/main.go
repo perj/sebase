@@ -14,13 +14,13 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"regexp"
 	"strings"
-	"time"
 
-	"github.com/coreos/etcd/client"
+	"github.com/schibsted/sebase/core/internal/pkg/etcdlight"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -87,7 +87,7 @@ func main() {
 		watch = true
 	}
 
-	_, kapi, err := etcdClient(etcdUrl)
+	kapi, err := etcdClient(etcdUrl)
 	if err != nil && !noEtcd {
 		log.Fatal(err)
 	}
@@ -113,22 +113,22 @@ func main() {
 	}
 
 	result := make(map[string]interface{})
-	watchers := make(map[string]client.Watcher)
+	watchers := make(map[string]etcdlight.Watcher)
 
 	for _, service := range flag.Args() {
-		var node *client.Node
+		var kvs []etcdlight.KV
 		if !noEtcd {
-			resp, err := kapi.Get(context.Background(), "/service/"+service, &client.GetOptions{Recursive: true})
+			r, err := kapi.Get(context.Background(), "/service/"+service, true)
 			if err != nil {
 				log.Print(err)
 			} else {
-				node = resp.Node
+				kvs = r.Values
 			}
 			if watch {
-				watchers[service] = kapi.Watcher("/service/"+service, &client.WatcherOptions{Recursive: true})
+				watchers[service] = kapi.Watch("/service/"+service, true, 0)
 			}
 		}
-		addService(result, service, node, allpools)
+		addService(result, service, kvs, allpools)
 	}
 
 	if !nodump {
@@ -158,49 +158,48 @@ func output(result interface{}) {
 	os.Stdout.Write(data)
 }
 
-func etcdClient(url string) (client.Client, client.KeysAPI, error) {
-	tport := *client.DefaultTransport.(*http.Transport)
+func etcdClient(burl string) (*etcdlight.KAPI, error) {
+	baseurl, err := url.Parse(burl)
+	if err != nil {
+		return nil, err
+	}
+	tport := *http.DefaultTransport.(*http.Transport)
 	tport.TLSClientConfig = &tls.Config{}
 	if cafile != "" {
 		cadata, err := ioutil.ReadFile(cafile)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		capool := x509.NewCertPool()
 		if !capool.AppendCertsFromPEM(cadata) {
-			return nil, nil, fmt.Errorf("No CA certs found in ca file")
+			return nil, fmt.Errorf("No CA certs found in ca file")
 		}
 		tport.TLSClientConfig.RootCAs = capool
 	}
 	if certfile != "" {
 		certdata, err := ioutil.ReadFile(certfile)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		cert, err := tls.X509KeyPair(certdata, certdata)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		tport.TLSClientConfig.Certificates = append(tport.TLSClientConfig.Certificates, cert)
 	}
-	cfg := client.Config{
-		Endpoints: []string{url},
-		Transport: &tport,
-		// set timeout per request to fail fast when the target endpoint is unavailable
-		HeaderTimeoutPerRequest: 3 * time.Second,
+	kapi := &etcdlight.KAPI{
+		Client: &http.Client{
+			Transport: &tport,
+		},
+		BaseURL: baseurl,
 	}
-	c, err := client.New(cfg)
-	if err != nil {
-		return nil, nil, err
-	}
-	kapi := client.NewKeysAPI(c)
-	return c, kapi, nil
+	return kapi, nil
 }
 
-func etcdClients(kapi client.KeysAPI, appl string) clientSlice {
-	resp, err := kapi.Get(context.Background(), "/clients/"+appl, &client.GetOptions{Recursive: true})
+func etcdClients(kapi *etcdlight.KAPI, appl string) clientSlice {
+	r, err := kapi.Get(context.Background(), "/clients/"+appl, true)
 	if err != nil {
-		if !client.IsKeyNotFound(err) {
+		if !etcdlight.IsErrorCode(err, 100) { // Key not found
 			log.Print(err)
 		}
 		return nil
@@ -208,10 +207,10 @@ func etcdClients(kapi client.KeysAPI, appl string) clientSlice {
 
 	res := make(clientSlice, 0)
 
-	for _, n := range resp.Node.Nodes {
-		data := make(map[string]interface{})
-		addConfHealth(data, n, true)
-		conf, _ := data["data"].(map[string]interface{})
+	nodes := make(map[string]interface{})
+	addConfHealth(nodes, r.Values, true)
+	for _, nv := range nodes {
+		conf, _ := nv.(map[string]interface{})["data"].(map[string]interface{})
 		if conf == nil {
 			continue
 		}
@@ -285,17 +284,16 @@ func filterPlogNodes(service string, allpools map[string]map[string]interface{})
 	return pnodes, nks
 }
 
-func addService(result map[string]interface{}, service string, node *client.Node, allpools map[string]map[string]interface{}) {
+func addService(result map[string]interface{}, service string, kvs []etcdlight.KV, allpools map[string]map[string]interface{}) {
 	data := make(map[string]interface{})
 	result[service] = data
 
 	pnodes, nks := filterPlogNodes(service, allpools)
 
-	if node != nil {
-		for _, n := range node.Nodes {
-			nk := addServiceNode(data, n, pnodes)
-			delete(nks, nk)
-		}
+	addConfHealth(data, kvs, false)
+	for nk := range data {
+		addClients(data, nk, pnodes)
+		delete(nks, nk)
 	}
 
 	// Check for nodes found in plog but not in etcd.
@@ -304,16 +302,6 @@ func addService(result map[string]interface{}, service string, node *client.Node
 		data[nk] = ndata
 		addClients(ndata, nk, pnodes)
 	}
-}
-
-func addServiceNode(result map[string]interface{}, node *client.Node, pnodes map[string][]map[string]interface{}) string {
-	nodekey := path.Base(node.Key)
-
-	data := make(map[string]interface{})
-	result[nodekey] = data
-	addConfHealth(data, node, false)
-	addClients(data, nodekey, pnodes)
-	return nodekey
 }
 
 func addClients(result map[string]interface{}, nodekey string, pnodes map[string][]map[string]interface{}) {
@@ -341,28 +329,29 @@ func addClients(result map[string]interface{}, nodekey string, pnodes map[string
 	}
 }
 
-func addConfHealth(result map[string]interface{}, node *client.Node, nofilter bool) {
-	var conf, health *client.Node
-	for _, n := range node.Nodes {
+func addConfHealth(result map[string]interface{}, kvs []etcdlight.KV, nofilter bool) {
+	for _, n := range kvs {
+		nkey := path.Base(path.Dir(n.Key))
+		m, _ := result[nkey].(map[string]interface{})
+		if m == nil {
+			m = make(map[string]interface{})
+			result[nkey] = m
+		}
+		data, _ := m["data"].(map[string]interface{})
+		if data == nil {
+			data = make(map[string]interface{})
+			m["data"] = data
+		}
 		switch path.Base(n.Key) {
 		case "config":
-			conf = n
+			addConf(data, n.Value, nofilter)
 		case "health":
-			health = n
+			addCheckFiltered(data, "health", n.Value, nofilter)
 		default:
 			log.Print("unexpected key in etcd: ", n.Key)
 		}
 	}
-	data := make(map[string]interface{})
-	if conf != nil {
-		addConf(data, conf.Value, nofilter)
-	}
-	if health != nil {
-		addCheckFiltered(data, "health", health.Value, nofilter)
-	}
-	if len(data) > 0 {
-		result["data"] = data
-	}
+
 }
 
 func addConf(result map[string]interface{}, value string, nofilter bool) {

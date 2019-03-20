@@ -19,8 +19,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/coreos/etcd/client"
-
+	"github.com/schibsted/sebase/core/internal/pkg/etcdlight"
 	"github.com/schibsted/sebase/vtree/pkg/bconf"
 )
 
@@ -201,7 +200,7 @@ loop:
 	return values
 }
 
-func addIp(client client.Client, values *map[string]interface{}) {
+func addIp(kapi *etcdlight.KAPI, values *map[string]interface{}) {
 	// Check if already set. This forces *.* to be a mapping but
 	// I think that's reasonable.
 	star, ok := (*values)["*"].(map[string]interface{})
@@ -219,8 +218,6 @@ func addIp(client client.Client, values *map[string]interface{}) {
 		return
 	}
 
-	machines := client.Endpoints()
-
 	ip := ""
 	// Intercept the connection and extract the local address.
 	// This determines the address we actually use to communicate with.
@@ -235,12 +232,7 @@ func addIp(client client.Client, values *map[string]interface{}) {
 		},
 	}
 	c := &http.Client{Transport: t}
-	for _, m := range machines {
-		c.Get(m)
-		if ip != "" {
-			break
-		}
-	}
+	c.Get(kapi.BaseURL.String())
 
 	if ip == "" {
 		log.Fatal("Failed to determine local address")
@@ -279,14 +271,14 @@ func getHealth(conf bconf.Bconf) (health string) {
 	return "down"
 }
 
-func registerService(kapi client.KeysAPI, ttl time.Duration, service, hostkey, health, prevHealth, config, prevConfig string) {
+func registerService(kapi *etcdlight.KAPI, ttl time.Duration, service, hostkey, health, prevHealth, config, prevConfig string) {
 
 	dir := service + "/" + hostkey
 
 	newdir := false
-	_, err := kapi.Set(context.Background(), dir, "", &client.SetOptions{Dir: true, Refresh: true, TTL: ttl, PrevExist: "true"})
-	if err != nil && client.IsKeyNotFound(err) {
-		_, err = kapi.Set(context.Background(), dir, "", &client.SetOptions{Dir: true, TTL: ttl})
+	err := kapi.RefreshDir(context.Background(), dir, ttl)
+	if etcdlight.IsErrorCode(err, 100) { // Key not found.
+		err = kapi.MkDir(context.Background(), dir, ttl)
 		newdir = true
 	}
 	if err != nil {
@@ -294,13 +286,13 @@ func registerService(kapi client.KeysAPI, ttl time.Duration, service, hostkey, h
 		newdir = true
 	}
 
-	setopts := &client.SetOptions{}
+	exclusive := false
 	if !newdir && config == prevConfig {
-		setopts.PrevExist = "false"
+		exclusive = true
 	}
-	_, err = kapi.Set(context.Background(), dir+"/config", string(config), setopts)
+	err = kapi.Set(context.Background(), dir+"/config", string(config), exclusive, 0)
 	if err != nil {
-		if cerr, ok := err.(client.Error); ok && cerr.Code == client.ErrorCodeNodeExist {
+		if etcdlight.IsErrorCode(err, 105) {
 			// Means the prevExist check failed, which is ok.
 		} else {
 			log.Print(err)
@@ -314,23 +306,23 @@ func registerService(kapi client.KeysAPI, ttl time.Duration, service, hostkey, h
 
 	newval := newdir || health != prevHealth
 	if !newval {
-		resp, _ := kapi.Get(context.Background(), dir+"/health", nil)
-		newval = resp == nil || resp.Node == nil || resp.Node.Value != health
+		r, _ := kapi.Get(context.Background(), dir+"/health", false)
+		newval = r == nil || len(r.Values) != 1 || r.Values[0].Value != health
 	}
 
 	if newval {
-		_, err = kapi.Set(context.Background(), dir+"/health", health, nil)
+		err = kapi.Set(context.Background(), dir+"/health", health, false, 0)
 		if err != nil {
 			log.Print(err)
 		}
 	}
 }
 
-func unregisterService(kapi client.KeysAPI, service, hostkey string) {
+func unregisterService(kapi *etcdlight.KAPI, service, hostkey string) {
 
 	dir := "/service/" + service + "/" + hostkey
 
-	_, err := kapi.Delete(context.Background(), dir, &client.DeleteOptions{Recursive: true, Dir: true})
+	err := kapi.RmDir(context.Background(), dir, true)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -339,25 +331,15 @@ func unregisterService(kapi client.KeysAPI, service, hostkey string) {
 var shutdown chan struct{}
 
 func runService(sdconf bconf.Bconf) {
-	url := sdconf.Get("registry.url").String("http://127.0.0.1:2379")
-	machines := []string{url}
-	cfg := client.Config{
-		Endpoints: machines,
-		Transport: client.DefaultTransport,
-	}
+	rurl := sdconf.Get("registry.url").String("http://127.0.0.1:2379")
 
-	cl, err := client.New(cfg)
+	kapi, err := etcdlight.NewKAPI(rurl)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = cl.Sync(context.Background())
-	if err != nil {
-		log.Fatal("Initial SyncCluster failed")
-	}
-
 	values := buildValues(sdconf)
-	addIp(cl, &values)
+	addIp(kapi, &values)
 	confdata := serializeValues(values)
 
 	service, isclient := getService(sdconf)
@@ -374,7 +356,6 @@ func runService(sdconf bconf.Bconf) {
 	register_interval := time.Duration(int_s) * time.Second
 	ttl := time.Duration(sdconf.Get("ttl_s").Int(30)) * time.Second
 
-	kapi := client.NewKeysAPI(cl)
 	running := true
 	for running {
 		health := ""
