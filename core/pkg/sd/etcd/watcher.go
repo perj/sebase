@@ -13,11 +13,12 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 	"time"
 
-	"github.com/coreos/etcd/client"
+	"github.com/schibsted/sebase/core/internal/pkg/etcdlight"
 	"github.com/schibsted/sebase/core/pkg/sd/sdr"
 	"github.com/schibsted/sebase/util/pkg/slog"
 	"github.com/schibsted/sebase/vtree/pkg/bconf"
@@ -40,7 +41,11 @@ type etcdSourceType struct {
 	sdr.SourceTypeTemplate
 }
 
-func etcdClient(url string, TLS *tls.Config) (client.Client, error) {
+func etcdClient(burl string, TLS *tls.Config) (*etcdlight.KAPI, error) {
+	baseurl, err := url.Parse(burl)
+	if err != nil {
+		return nil, err
+	}
 	t := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		Dial: (&net.Dialer{
@@ -50,11 +55,11 @@ func etcdClient(url string, TLS *tls.Config) (client.Client, error) {
 		TLSHandshakeTimeout: 10 * time.Second,
 		TLSClientConfig:     TLS,
 	}
-	cfg := client.Config{
-		Endpoints: []string{url},
-		Transport: t,
+	kapi := &etcdlight.KAPI{
+		Client:  &http.Client{Transport: t},
+		BaseURL: baseurl,
 	}
-	return client.New(cfg)
+	return kapi, nil
 }
 
 func (e *etcdSourceType) SdrSourceSetup(conf bconf.Bconf, TLS *tls.Config) (sdr.SourceInstance, error) {
@@ -68,8 +73,7 @@ func (e *etcdSourceType) SdrSourceSetup(conf bconf.Bconf, TLS *tls.Config) (sdr.
 }
 
 type Watcher struct {
-	Client         client.Client
-	Kapi           client.KeysAPI
+	Kapi           *etcdlight.KAPI
 	Prefix         string
 	RequestTimeout time.Duration
 	MessageBufSz   int
@@ -86,15 +90,14 @@ type Watcher struct {
 //
 // The TLS pointer is optional, used for HTTPS connections if given.
 //
-// Errors returned are from the call to NewClient in the etcd/client package.
+// Errors returned are from url.Parse
 func NewWatcher(url, prefix string, TLS *tls.Config) (*Watcher, error) {
-	cl, err := etcdClient(url, TLS)
+	kapi, err := etcdClient(url, TLS)
 	if err != nil {
 		return nil, err
 	}
 	w := &Watcher{
-		Client:         cl,
-		Kapi:           client.NewKeysAPI(cl),
+		Kapi:           kapi,
 		Prefix:         prefix,
 		RequestTimeout: 2 * time.Second,
 		MessageBufSz:   MessageBufSz,
@@ -110,14 +113,14 @@ func NewWatcher(url, prefix string, TLS *tls.Config) (*Watcher, error) {
 
 func (w *Watcher) run() {
 	defer close(w.closed)
-	rch := make(chan *client.Response)
+	rch := make(chan *etcdlight.Response)
 	for {
 		cancel := func() {}
 		if len(w.conns) > 0 {
 			var ctx context.Context
 			ctx, cancel = context.WithCancel(context.Background())
 			slog.Debug("etcd-watcher: Watching prefix", "prefix", w.Prefix, "index", w.index)
-			ew := w.Kapi.Watcher(w.Prefix, &client.WatcherOptions{AfterIndex: w.index, Recursive: true})
+			ew := w.Kapi.Watch(w.Prefix, true, w.index)
 			go func() {
 				rsp, err := ew.Next(ctx)
 				if err == nil {
@@ -184,24 +187,24 @@ func (w *Watcher) doCommand(cmd commMsg) {
 func (w *Watcher) doAddService(cmd *addService) {
 	srvpath := path.Join(w.Prefix, cmd.service)
 
-	var rsp *client.Response
+	var rsp *etcdlight.Response
 	// Loop on some errors, e.g failure to connect.
 	retry := true
 	for retry {
 		retry = false
 		ctx, cancel := context.WithTimeout(cmd.ctx, w.RequestTimeout)
 		slog.Debug("etcd-watcher: Initial GET", "service", srvpath)
-		nrsp, err := w.Kapi.Get(ctx, srvpath, &client.GetOptions{Recursive: true})
+		nrsp, err := w.Kapi.Get(ctx, srvpath, true)
 		// Try to whitelist some errors for retry, but abort on unknown ones.
 		switch err := err.(type) {
 		case nil:
 			// Success
 			rsp = nrsp
-		case client.Error:
-			switch err.Code {
-			case client.ErrorCodeKeyNotFound:
+		case *etcdlight.ErrorResponse:
+			switch err.ErrorCode {
+			case 100: // Not found
 				// Not really an error, treat as success.
-			case client.ErrorCodeUnauthorized:
+			case 110: // Unauthorized
 				slog.Error("etcd-watcher: unauthorized", "error", err)
 				cmd.err = err
 			default:
@@ -211,22 +214,16 @@ func (w *Watcher) doAddService(cmd *addService) {
 			if w.index == 0 {
 				w.index = err.Index
 			}
-		case *client.ClusterError:
-			// Assume this is a temporary error such as a 500 response.
-			slog.Warning("etcd-watcher: Cluster error", "error", err)
+		case *url.Error:
+			// Assume this is a temporary error.
+			slog.Warning("etcd-watcher: network error", "error", err)
 			retry = true
 			// Check for TLS error though.
-			for _, e := range err.Errors {
-				ope, ok := e.(*net.OpError)
-				if !ok {
-					continue
-				}
-				// Seriously the best check I can find.
-				if ope.Op == "remote error" || ope.Op == "local error" {
-					cmd.err = err
-					retry = false
-					break
-				}
+			ope, ok := err.Err.(*net.OpError)
+			// Seriously the best check I can find.
+			if ok && (ope.Op == "remote error" || ope.Op == "local error") {
+				cmd.err = err
+				retry = false
 			}
 		default:
 			if err == context.DeadlineExceeded {
@@ -265,9 +262,9 @@ func (w *Watcher) doAddService(cmd *addService) {
 	}
 }
 
-func (w *Watcher) handleResponse(rsp *client.Response, flush bool) {
+func (w *Watcher) handleResponse(rsp *etcdlight.Response, flush bool) {
 	if w.index == 0 {
-		w.index = rsp.Index
+		w.index = rsp.MaxIndex
 	}
 	if flush {
 		slog.Debug("etcd-watcher: flush")
@@ -278,9 +275,9 @@ func (w *Watcher) handleResponse(rsp *client.Response, flush bool) {
 	}
 	switch rsp.Action {
 	case "get", "update", "create", "set":
-		w.handleUpdate(rsp.Node)
+		w.handleUpdate(rsp.Values)
 	case "expire", "delete":
-		w.handleDelete(rsp.Node)
+		w.handleDelete(rsp.Values)
 	default:
 		slog.Error("etcd-watcher: Unexpected action", "action", rsp.Action)
 	}
@@ -291,31 +288,19 @@ func (w *Watcher) handleResponse(rsp *client.Response, flush bool) {
 	}
 }
 
-func (w *Watcher) handleUpdate(node *client.Node) {
-	if node.ModifiedIndex >= w.index {
-		w.index = node.ModifiedIndex
-	}
-
-	if !node.Dir {
+func (w *Watcher) handleUpdate(kvs []etcdlight.KV) {
+	for _, node := range kvs {
 		if strings.HasPrefix(node.Key, w.Prefix) {
 			w.handleValue(sdr.Update, node.Key, node.Value)
-		}
-	} else {
-		if strings.HasPrefix(node.Key, w.Prefix) || strings.HasPrefix(w.Prefix, node.Key) {
-			for _, n := range node.Nodes {
-				w.handleUpdate(n)
-			}
 		}
 	}
 }
 
-func (w *Watcher) handleDelete(node *client.Node) {
-	if node.ModifiedIndex >= w.index {
-		w.index = node.ModifiedIndex
-	}
-
-	if strings.HasPrefix(node.Key, w.Prefix) {
-		w.handleValue(sdr.Delete, node.Key, "")
+func (w *Watcher) handleDelete(kvs []etcdlight.KV) {
+	for _, node := range kvs {
+		if strings.HasPrefix(node.Key, w.Prefix) {
+			w.handleValue(sdr.Delete, node.Key, "")
+		}
 	}
 }
 
@@ -323,6 +308,7 @@ func (w *Watcher) handleValue(mtype sdr.MessageType, key, value string) {
 	for _, conn := range w.conns {
 		if strings.HasPrefix(key, conn.srvpath) {
 			ukey := strings.TrimPrefix(key[len(conn.srvpath):], "/")
+			slog.Debug("etcd-watcher: sending", "mtype", mtype, "service", conn.srvpath, "key", ukey, "value", value)
 			slash := strings.LastIndexByte(ukey, '/')
 			msg := sdr.Message{Index: w.index, Type: mtype, Value: value}
 			if slash >= 0 {
@@ -333,6 +319,8 @@ func (w *Watcher) handleValue(mtype sdr.MessageType, key, value string) {
 			}
 			conn.lastIndex = w.index
 			conn.channel <- msg
+		} else {
+			slog.Debug("not sending", "key", key, "service", conn.srvpath)
 		}
 	}
 }

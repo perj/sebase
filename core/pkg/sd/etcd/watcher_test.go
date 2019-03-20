@@ -9,13 +9,13 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/coreos/etcd/client"
-	"github.com/schibsted/sebase/util/pkg/slog"
 	"github.com/schibsted/sebase/core/pkg/sd/sdr"
+	"github.com/schibsted/sebase/util/pkg/slog"
 	"github.com/schibsted/sebase/vtree/pkg/bconf"
 )
 
@@ -184,7 +184,7 @@ func TestTlsError(t *testing.T) {
 	defer watcher.Close()
 
 	_, err = watcher.Connect(context.TODO(), "search/asearch", nil)
-	if _, ok := err.(*client.ClusterError); !ok {
+	if _, ok := err.(*url.Error); !ok {
 		t.Fatal(err)
 	}
 }
@@ -194,7 +194,7 @@ func TestUpdateDelete(t *testing.T) {
 		tb:     t,
 		method: "GET",
 		path:   "/v2/keys/service/search/asearch",
-		query:  "quorum=false&recursive=true&sorted=false",
+		query:  "recursive=true",
 		reply:  getReply,
 		waitCh: make(chan struct{}),
 	}

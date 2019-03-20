@@ -10,19 +10,20 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 
-	"github.com/coreos/etcd/client"
+	"github.com/schibsted/sebase/core/internal/pkg/etcdlight"
 	"github.com/schibsted/sebase/util/pkg/slog"
 )
 
-func registerService(kapi client.KeysAPI, ttl time.Duration, service, hostkey, health, prevHealth, config, prevConfig string) {
+func registerService(kapi *etcdlight.KAPI, ttl time.Duration, service, hostkey, health, prevHealth, config, prevConfig string) {
 	dir := service + "/" + hostkey
 
 	newdir := false
-	_, err := kapi.Set(context.Background(), dir, "", &client.SetOptions{Dir: true, Refresh: true, TTL: ttl, PrevExist: "true"})
-	if err != nil && client.IsKeyNotFound(err) {
-		_, err = kapi.Set(context.Background(), dir, "", &client.SetOptions{Dir: true, TTL: ttl})
+	err := kapi.RefreshDir(context.Background(), dir, ttl)
+	if err != nil && etcdlight.IsErrorCode(err, 100) { // Not found
+		err = kapi.MkDir(context.Background(), dir, ttl)
 		newdir = true
 	}
 	if err != nil {
@@ -30,13 +31,13 @@ func registerService(kapi client.KeysAPI, ttl time.Duration, service, hostkey, h
 		newdir = true
 	}
 
-	setopts := &client.SetOptions{}
+	exclusive := false
 	if !newdir && config == prevConfig {
-		setopts.PrevExist = "false"
+		exclusive = true
 	}
-	_, err = kapi.Set(context.Background(), dir+"/config", string(config), setopts)
+	err = kapi.Set(context.Background(), dir+"/config", string(config), exclusive, 0)
 	if err != nil {
-		if cerr, ok := err.(client.Error); ok && cerr.Code == client.ErrorCodeNodeExist {
+		if etcdlight.IsErrorCode(err, 105) {
 			// Means the prevExist check failed, which is ok.
 		} else {
 			slog.Error("Error setting config in etcd", "error", err)
@@ -50,23 +51,23 @@ func registerService(kapi client.KeysAPI, ttl time.Duration, service, hostkey, h
 
 	newval := newdir || health != prevHealth
 	if !newval {
-		resp, _ := kapi.Get(context.Background(), dir+"/health", nil)
-		newval = resp == nil || resp.Node == nil || resp.Node.Value != health
+		resp, _ := kapi.Get(context.Background(), dir+"/health", false)
+		newval = resp == nil || len(resp.Values) == 1 || resp.Values[0].Value != health
 	}
 
 	if newval {
-		_, err = kapi.Set(context.Background(), dir+"/health", health, nil)
+		err = kapi.Set(context.Background(), dir+"/health", health, false, 0)
 		if err != nil {
 			slog.Error("Error setting health in etcd", "error", err)
 		}
 	}
 }
 
-func unregisterService(kapi client.KeysAPI, service, hostkey string) {
+func unregisterService(kapi *etcdlight.KAPI, service, hostkey string) {
 
 	dir := service + "/" + hostkey
 
-	_, err := kapi.Delete(context.Background(), dir, &client.DeleteOptions{Recursive: true, Dir: true})
+	err := kapi.RmDir(context.Background(), dir, true)
 	if err != nil {
 		slog.Error("Error deleting service in etcd", "error", err)
 	}
@@ -134,19 +135,19 @@ func (s *Sapp) SDRegister() error {
 	if !s.Bconf.Get("sd.registry.url").Valid() {
 		return SDNotConfigured
 	}
-	url := s.Bconf.Get("sd.registry.url").String("http://localhost:2379")
-	tport := *client.DefaultTransport.(*http.Transport)
-	tport.TLSClientConfig = s.TlsConf
-	cfg := client.Config{
-		Endpoints: []string{url},
-		Transport: &tport,
-	}
-	cl, err := client.New(cfg)
+	burl := s.Bconf.Get("sd.registry.url").String("http://localhost:2379")
+	baseurl, err := url.Parse(burl)
 	if err != nil {
 		return err
 	}
-
-	kapi := client.NewKeysAPI(cl)
+	tport := *http.DefaultTransport.(*http.Transport)
+	tport.TLSClientConfig = s.TlsConf
+	kapi := &etcdlight.KAPI{
+		Client: &http.Client{
+			Transport: &tport,
+		},
+		BaseURL: baseurl,
+	}
 	service := "/service/" + s.app
 	hostkey := s.hostkey()
 	hostname := "127.0.0.1" // XXX

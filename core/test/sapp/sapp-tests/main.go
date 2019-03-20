@@ -9,6 +9,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptrace"
+	"os"
+	"os/exec"
 
 	"github.com/schibsted/sebase/core/pkg/fd_pool"
 	"github.com/schibsted/sebase/core/pkg/sapp"
@@ -57,10 +59,20 @@ func main() {
 		{"sapp-test-server-log-all", "GET", "/allow_get", 200, bodyOk},
 		{"sapp-test-server-log-all", "GET", "/forbidden", 403, bodyDenied},
 	}
+	// Preallocate room for the service.
+	watch := make([]string, 0, 5)
+	watch = append(watch, "-appl", "sapp-tests", "-etcd", app.Bconf.Get("sd", "etcd_url").String(""))
 	for _, t := range tests {
 		status, body := req(t.service, t.method, t.endpoint)
 		if status != t.status || body != t.body {
 			log.Fatalf("Expected status %d body '%s', got status %d body '%s'\n", t.status, t.body, status, body)
+		}
+		cmd := exec.Command("watch-service", append(watch, t.service)...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err := cmd.Run()
+		if err != nil {
+			log.Fatal(err)
 		}
 	}
 }
