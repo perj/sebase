@@ -12,14 +12,12 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/schibsted/sebase/core/pkg/sd/sdr"
 	"github.com/schibsted/sebase/util/pkg/sbalance"
 	"github.com/schibsted/sebase/util/pkg/slog"
 	"github.com/schibsted/sebase/vtree/pkg/bconf"
-	"golang.org/x/sys/unix"
 )
 
 var (
@@ -604,36 +602,6 @@ func (c *conn) get(ctx context.Context, status sbalance.ConnStatus) (NetConn, er
 		// We ran into a hard failure.
 		status = sbalance.Fail
 	}
-}
-
-func checkDeadConnection(netc net.Conn) (dead bool) {
-	// If possible, test that the connection is valid.
-	// I've tested using netc.Write for this, but it didn't work. Instead
-	// call syscall.Poll directly. This obviously isn't as portable, but
-	// should work on our supported systems.
-	type rawconn interface {
-		SyscallConn() (syscall.RawConn, error)
-	}
-	if sc, ok := netc.(rawconn); ok {
-		if scc, err := sc.SyscallConn(); err == nil {
-			scc.Control(func(fd uintptr) {
-				pfd := []unix.PollFd{
-					{int32(fd), unix.POLLHUP | unix.POLLRDHUP, 0},
-				}
-				n, err := unix.Poll(pfd, 0)
-				if n == 0 {
-					return
-				}
-				dead = true
-				if err != nil {
-					slog.Debug("Not returning dead connection", "error", err)
-				} else {
-					slog.Debug("Not returning dead connection", "eof", true)
-				}
-			})
-		}
-	}
-	return
 }
 
 func (c *conn) Next(ctx context.Context, status sbalance.ConnStatus) error {
