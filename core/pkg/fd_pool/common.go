@@ -79,6 +79,12 @@ func (e *ErrNoServiceNodes) Error() string {
 	return fmt.Sprintf("fd_pool: Couldn't connect to any service nodes for service %s port key %s", e.Service, e.PortKey)
 }
 
+func (e *ErrNoServiceNodes) KVError(m map[string]interface{}, key string) {
+	m[key] = "Couldn't connect to any service nodes"
+	m["fd_pool.service"] = e.Service
+	m["fd_pool.port-key"] = e.PortKey
+}
+
 type poc struct {
 	NetConn
 }

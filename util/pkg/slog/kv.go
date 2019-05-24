@@ -16,6 +16,19 @@ func (kvs KV) ToMap() map[string]interface{} {
 	return kvs
 }
 
+// Type KVError can be used to customize error printing via this packge.
+// If implemented, it should write values to m. The primary log message
+// should be written to the key given, but other keys can be added.
+// Make sure to do so in a responsible manner though, to not overwrite
+// other keys such as "msg". You can for example prefix your keys with
+// your package name.
+//
+// This interface is experimental and might be removed/changed in minor
+// versions.
+type KVError interface {
+	KVError(m map[string]interface{}, key string)
+}
+
 // ToMap is used to check arguments passed to KVsMap. If this function is
 // implemented the keys and values returned are added to the KVsMap return
 // value.
@@ -80,6 +93,8 @@ func kvsMapV(m map[string]interface{}, k string, v interface{}) {
 	switch v := v.(type) {
 	case string:
 		m[k] = v
+	case KVError:
+		v.KVError(m, k)
 	case xerrorsFormatter:
 		kvsMapXErrorsFormatter(m, k, v)
 	case error:
