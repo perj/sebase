@@ -14,6 +14,10 @@ import (
 // functions on the Plog and Logger types.
 type Level int
 
+// LevelAddMsg, if true, logs messages passed via Level.Write as a JSON
+// dictionary with a "msg" key rather than directly as a string.
+var LevelAddMsg bool = false
+
 const (
 	Emergency Level = iota
 	Alert
@@ -109,10 +113,19 @@ func (l Level) Write(w []byte) (n int, err error) {
 		w = w[:len(w)-1]
 	}
 	if Default != nil {
-		Default.LogAsString(l.Code(), w)
+		if LevelAddMsg {
+			Default.LogMsg(l.Code(), string(w))
+		} else {
+			Default.LogAsString(l.Code(), w)
+		}
 		return len(w), nil
 	}
-	jw, err := json.Marshal(string(w))
+	var jw []byte
+	if LevelAddMsg {
+		jw, err = json.Marshal(map[string]string{"msg": string(w)})
+	} else {
+		jw, err = json.Marshal(string(w))
+	}
 	if err != nil {
 		return 0, err
 	}
