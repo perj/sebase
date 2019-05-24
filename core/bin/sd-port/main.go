@@ -6,12 +6,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"net"
 	"strings"
 	"time"
 
 	"github.com/schibsted/sebase/core/pkg/sapp"
+	"github.com/schibsted/sebase/plog/pkg/plog"
 )
 
 // This program is for getting a port number for a service in regress tests.
@@ -24,7 +24,7 @@ func main() {
 	retry := flag.Int("retry", 0, "How many retries before giving up (50ms timeout)")
 	app.Flags("", true)
 	if err := app.Init("sd-port"); err != nil {
-		log.Fatal(err)
+		plog.Critical.FatalMsg("Failed to initialize.", "error", err)
 	}
 	svc := flag.Arg(0)
 
@@ -42,7 +42,7 @@ func main() {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if err != nil {
-		log.Fatal(err)
+		plog.Critical.FatalMsg("Failed to connect.", "error", err)
 	}
 	defer conn.Close()
 

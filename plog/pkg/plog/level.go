@@ -8,6 +8,10 @@ import (
 	"os"
 )
 
+// Type Level is a syslog like log level. The primary way to use it is via
+// the predefined package Constants and the LogMsg functions.
+// Level is also used as an argument for the LevelPrint and LevelPrintf
+// functions on the Plog and Logger types.
 type Level int
 
 const (
@@ -118,6 +122,8 @@ func (l Level) Write(w []byte) (n int, err error) {
 // Calls l.Write via fmt.Fprint.
 // Checks l against the SetupLevel first and thus is slightly more
 // efficient than calling fmt.Fprint directly.
+// While not deprecated it's recommended to use LogMsg instead for
+// more structured logging.
 func (l Level) Print(v ...interface{}) {
 	if l <= SetupLevel {
 		fmt.Fprint(l, v...)
@@ -127,6 +133,8 @@ func (l Level) Print(v ...interface{}) {
 // Calls l.Write via fmt.Fprintf.
 // Checks l against the SetupLevel first and thus is slightly more
 // efficient than calling fmt.Fprintf directly.
+// While not deprecated it's recommended to use LogMsg instead for
+// more structured logging.
 func (l Level) Printf(format string, v ...interface{}) {
 	if l <= SetupLevel {
 		fmt.Fprintf(l, format, v...)
@@ -145,6 +153,12 @@ func (l Level) Fatalf(format string, v ...interface{}) {
 	os.Exit(1)
 }
 
+// Calls l.LogMsg followed by os.Exit(1)
+func (l Level) FatalMsg(msg string, v ...interface{}) {
+	l.LogMsg(msg, v...)
+	os.Exit(1)
+}
+
 // Calls l.Write followed by panic.
 func (l Level) Panic(v ...interface{}) {
 	fmt.Fprint(l, v...)
@@ -155,6 +169,12 @@ func (l Level) Panic(v ...interface{}) {
 func (l Level) Panicf(format string, v ...interface{}) {
 	fmt.Fprintf(l, format, v...)
 	panic(fmt.Sprintf(format, v...))
+}
+
+// Calls l.LogMsg followed by panic.
+func (l Level) PanicMsg(msg string, v ...interface{}) {
+	l.LogMsg(msg, v...)
+	panic(msg + ": " + fmt.Sprint(v...))
 }
 
 // Convience function that calls LogDict with l.Code() as key. This is
@@ -169,5 +189,25 @@ func (l Level) LogDict(kvs ...interface{}) error {
 // to slog.KVsMap to convert to a dictionary.
 // This is not a printf-like function, despite the signature.
 func (l Level) LogMsg(msg string, kvs ...interface{}) {
-	LogMsg(l.Code(), msg, kvs...)
+	if l <= SetupLevel {
+		LogMsg(l.Code(), msg, kvs...)
+	}
+}
+
+// Msg is a convenience function that calls LogMsg with l.Code() as key and
+// only a human readable message.
+func (l Level) Msg(msg string) {
+	if l <= SetupLevel {
+		LogMsg(l.Code(), msg)
+	}
+}
+
+// Msgf is a convenience message calling LogMsg with l.Code() as key and
+// the printf formatted message as the msg parameter.
+// a human readable message.
+func (l Level) Msgf(format string, values ...interface{}) {
+	if l <= SetupLevel {
+		return
+	}
+	LogMsg(l.Code(), fmt.Sprintf(format, values...))
 }

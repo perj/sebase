@@ -10,14 +10,48 @@ import (
 
 type Fields = slog.KV
 
-// An interface with functions for level based logging. Plog context
-// conform to this interface, as well as the WithFields return value.
+// Type TypeLogger can be used to log with preset fields. Additional
+// Fields can also be added via the With method or passed together
+// with a message to LogMsg.
+//
+// The Level type in this package implements this interface.
+// See that type for more documenation about the functions here.
+//
+// Methods might be added to this interface without increasing the
+// major version.
+type TypeLogger interface {
+	With(kvs ...interface{}) TypeLogger
+
+	Msg(msg string)
+	Msgf(format string, value ...interface{})
+
+	LogMsg(msg string, kvs ...interface{})
+
+	Print(value ...interface{})
+	Printf(format string, value ...interface{})
+	Fatal(value ...interface{})
+	Fatalf(format string, value ...interface{})
+	Panic(value ...interface{})
+	Panicf(format string, value ...interface{})
+}
+
+// Type Logger is an interface with functions for level based logging. Plog
+// context conform to this interface, as well as the WithFields return value.
+// See the Plog type for documentation about the functions in this interface.
+//
+// Methods might be added to this interface without increasing the
+// major version.
 type Logger interface {
+	With(kvs ...interface{}) Logger
+
+	Type(key string) TypeLogger
+
 	Log(key string, value interface{}) error
 	LogDict(key string, kvs ...interface{}) error
 	LogMsg(key string, msg string, kvs ...interface{})
 
 	LevelPrint(lvl Level, value ...interface{})
+	LevelPrintf(lvl Level, format string, value ...interface{})
 	Emergency(value ...interface{})
 	Emergencyf(format string, value ...interface{})
 	Alert(value ...interface{})
@@ -34,38 +68,85 @@ type Logger interface {
 	Infof(format string, value ...interface{})
 	Debug(value ...interface{})
 	Debugf(format string, value ...interface{})
-
-	Print(value ...interface{})
-	Printf(format string, value ...interface{})
-	Fatal(value ...interface{})
-	Fatalf(format string, value ...interface{})
-	Panic(value ...interface{})
-	Panicf(format string, value ...interface{})
 }
 
-// WithFields for compatibility with logrus. If the Log function is used with
+// WithFields can be used to create Loggers with preset fields.
+// If the Log function on the returned interface is used with
 // a map[string]interface{} value then the fields are merged with that map,
 // otherwise the value is put in the "msg" key in a dictionary with the
 // fields. LogDict and LogMsg are wrappers for Log with a map[string]interface{}.
 // The latter adds the msg argument with the "msg" key.
 //
-// This functions logs to Default if non-nil otherwise to FallbackWriter.
+// This function logs to Default if non-nil otherwise to FallbackWriter.
 //
-// WithKeys(...).Info(x) is equal to Info.LogMsg(x, ...)
+// WithFields(...).Info(x) is equal to Info.LogMsg(x, ...)
+// WithFields(...).Type("INFO").Msg(x) is also the same.
+//
+// The fields map is stored by reference so don't modify it after this call.
+// Each call to With and WithFields creates a new logger so don't call it
+// more than necessary.
 func WithFields(f Fields) Logger {
-	return &fielder{f, Default, true}
+	return newFielder(nil, f, Default, true)
 }
 
-// WithFields for compatibility with logrus. See top level WithFields for more
+// With creates a Logger in a similar way as WithFields, but uses the
+// alternating keys and values given by kvs instead. The full details
+// of how kvs is parsed is described in the slog.KVsMap function, but
+// the basic version is to alternate keys and values.
+func With(kvs ...interface{}) Logger {
+	return newFielder(nil, slog.KVsMap(kvs...), Default, true)
+}
+
+// WithFields on a specific plog context. See top level WithFields for more
 // info.
+// Unlike the package level function, this one does not use the FallbackWriter
+// but simply discards instead if plog is nil.
 func (plog *Plog) WithFields(f Fields) Logger {
-	return &fielder{f, plog, false}
+	return newFielder(nil, f, plog, false)
+}
+
+// With creates a Logger with the key-values. See the package level function
+// for more information. kvs is parsed via slog.KVsMap.
+// Unlike the package level function, this one does not use the FallbackWriter
+// but simply discards instead if plog is nil.
+func (plog *Plog) With(kvs ...interface{}) Logger {
+	return newFielder(nil, slog.KVsMap(kvs...), plog, false)
+}
+
+func (f *fielder) With(kvs ...interface{}) Logger {
+	return newFielder(f.fields, slog.KVsMap(kvs...), f.Ctx, f.fallback)
+}
+
+func newFielder(farr []map[string]interface{}, f Fields, ctx *Plog, fallback bool) *fielder {
+	newfarr := make([]map[string]interface{}, len(farr)+1)
+	if farr != nil {
+		copy(newfarr, farr)
+	}
+	if f != nil {
+		newfarr[len(farr)] = f
+	} else {
+		newfarr = newfarr[:len(farr)]
+	}
+	return &fielder{newfarr, ctx, fallback}
 }
 
 type fielder struct {
-	fields   map[string]interface{}
+	fields   []map[string]interface{}
 	Ctx      *Plog
 	fallback bool
+}
+
+func (f *fielder) flatten(m map[string]interface{}) map[string]interface{} {
+	ret := make(map[string]interface{}, len(m)+len(f.fields))
+	for _, f := range f.fields {
+		for k, v := range f {
+			ret[k] = v
+		}
+	}
+	for k, v := range m {
+		ret[k] = v
+	}
+	return ret
 }
 
 func (f *fielder) Log(key string, value interface{}) error {
@@ -78,14 +159,7 @@ func (f *fielder) Log(key string, value interface{}) error {
 			"msg": value,
 		}
 	}
-	vv := make(map[string]interface{}, len(m)+len(f.fields))
-	for k, v := range f.fields {
-		vv[k] = v
-	}
-	for k, v := range m {
-		vv[k] = v
-	}
-	value = vv
+	value = f.flatten(m)
 	if f.Ctx != nil {
 		return f.Ctx.Log(key, value)
 	}
@@ -197,30 +271,75 @@ func (f *fielder) Debugf(format string, value ...interface{}) {
 	f.LevelPrintf(Debug, format, value...)
 }
 
-func (f *fielder) Print(value ...interface{}) {
-	f.LevelPrint(Info, value...)
+type typeFielder struct {
+	*fielder
+	key string
 }
 
-func (f *fielder) Printf(format string, value ...interface{}) {
-	f.LevelPrintf(Info, format, value...)
+// With creates a TypeLogger with the key-values. See the package level
+// function for more information. TypeLogger is different from Logger
+// in the key is fixed and not part of the function signatures.
+// kvs is parsed via slog.KVsMap.
+func (l Level) With(kvs ...interface{}) TypeLogger {
+	ctx := Default
+	fallback := true
+	if l > SetupLevel {
+		ctx = nil
+		fallback = false
+	}
+	return &typeFielder{newFielder(nil, slog.KVsMap(kvs...), ctx, fallback), l.Code()}
 }
 
-func (f *fielder) Fatal(value ...interface{}) {
-	f.LevelPrint(Crit, value...)
+func (f *typeFielder) With(kvs ...interface{}) TypeLogger {
+	return &typeFielder{newFielder(f.fields, slog.KVsMap(kvs...), f.Ctx, f.fallback), f.key}
+}
+
+// Type create a TypeLogger for this context and key. Fields can then
+// be added by the With function. See Level.With for more information.
+func (plog *Plog) Type(key string) TypeLogger {
+	return &typeFielder{newFielder(nil, nil, plog, false), key}
+}
+
+func (f *fielder) Type(key string) TypeLogger {
+	return &typeFielder{f, key}
+}
+
+func (f *typeFielder) Print(value ...interface{}) {
+	f.fielder.LogMsg(f.key, fmt.Sprint(value...))
+}
+
+func (f *typeFielder) LogMsg(msg string, kvs ...interface{}) {
+	f.fielder.LogMsg(f.key, msg, kvs...)
+}
+
+func (f *typeFielder) Printf(format string, value ...interface{}) {
+	f.fielder.LogMsg(f.key, fmt.Sprintf(format, value...))
+}
+
+func (f *typeFielder) Fatal(value ...interface{}) {
+	f.fielder.LogMsg(f.key, fmt.Sprint(value...))
 	os.Exit(1)
 }
 
-func (f *fielder) Fatalf(format string, value ...interface{}) {
-	f.LevelPrintf(Crit, format, value...)
+func (f *typeFielder) Fatalf(format string, value ...interface{}) {
+	f.fielder.LogMsg(f.key, fmt.Sprintf(format, value...))
 	os.Exit(1)
 }
 
-func (f *fielder) Panic(value ...interface{}) {
-	f.LevelPrint(Crit, value...)
+func (f *typeFielder) Panic(value ...interface{}) {
+	f.fielder.LogMsg(f.key, fmt.Sprint(value...))
 	panic(fmt.Sprint(value...))
 }
 
-func (f *fielder) Panicf(format string, value ...interface{}) {
-	f.LevelPrintf(Crit, format, value...)
+func (f *typeFielder) Panicf(format string, value ...interface{}) {
+	f.fielder.LogMsg(f.key, fmt.Sprintf(format, value...))
 	panic(fmt.Sprintf(format, value...))
+}
+
+func (f *typeFielder) Msg(msg string) {
+	f.fielder.LogMsg(f.key, msg)
+}
+
+func (f *typeFielder) Msgf(format string, value ...interface{}) {
+	f.fielder.LogMsg(f.key, fmt.Sprintf(format, value...))
 }
