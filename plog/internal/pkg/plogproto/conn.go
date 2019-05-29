@@ -3,6 +3,7 @@
 package plogproto
 
 import (
+	"bufio"
 	"encoding/binary"
 	fmt "fmt"
 	"io"
@@ -68,23 +69,24 @@ func NewClientConn(sock string) (*Writer, error) {
 
 // Type for receiving plog messages. Has Closer for easier use.
 type Reader struct {
-	io.ReadCloser
+	br *bufio.Reader
+	io.Closer
 	Seqpacket bool
 }
 
 // Creates a new reader for plog messages.
 func NewReader(rc io.ReadCloser, seqpacket bool) *Reader {
-	return &Reader{rc, seqpacket}
+	return &Reader{bufio.NewReader(rc), rc, seqpacket}
 }
 
 // Overwrite *msg with a message received from the connection.
 func (r *Reader) Receive(msg *Plog) error {
 	var l uint32
-	if err := binary.Read(r, binary.BigEndian, &l); err != nil {
+	if err := binary.Read(r.br, binary.BigEndian, &l); err != nil {
 		return err
 	}
 	data := make([]byte, l)
-	_, err := io.ReadFull(r, data)
+	_, err := io.ReadFull(r.br, data)
 	if err != nil {
 		return err
 	}
@@ -94,14 +96,15 @@ func (r *Reader) Receive(msg *Plog) error {
 // Type for sending plog messages.
 // Has closer for easier use.
 type Writer struct {
-	io.WriteCloser
+	bw *bufio.Writer
+	io.Closer
 	Seqpacket bool
 	sync.Mutex
 }
 
 // Creates a new writer for plog messages.
 func NewWriter(wc io.WriteCloser, seqpacket bool) *Writer {
-	return &Writer{WriteCloser: wc, Seqpacket: seqpacket}
+	return &Writer{bw: bufio.NewWriter(wc), Closer: wc, Seqpacket: seqpacket}
 }
 
 // Send *msg on the connection.
@@ -115,18 +118,16 @@ func (w *Writer) Send(msg *Plog) error {
 	w.Lock()
 	defer w.Unlock()
 	l := uint32(len(data))
-	if err := binary.Write(w, binary.BigEndian, l); err != nil {
+	if err := binary.Write(w.bw, binary.BigEndian, l); err != nil {
 		return err
 	}
-	var tot uint32
-	for tot < l {
-		n, err := w.Write(data)
-		if err != nil {
-			return err
-		}
-		tot += uint32(n)
+	// bufio.Writer always write all or return an error.
+	_, err = w.bw.Write(data)
+	if err != nil {
+		return err
 	}
-	return nil
+	// Always flush, we're not allowed to store things on this side.
+	return w.bw.Flush()
 }
 
 // Convenience wrapper for sending only the open message.

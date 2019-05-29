@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -61,14 +62,14 @@ func (wr jsonIoWriter) Close() error {
 
 type jsonFileWriter struct {
 	jsonIoWriter
-	path string
-	io.Closer
-	sync.RWMutex
+	path   string
+	closer io.Closer
+	sync.Mutex
 }
 
 func (jf *jsonFileWriter) Write(msg LogMessage) error {
-	jf.RLock()
-	defer jf.RUnlock()
+	jf.Lock()
+	defer jf.Unlock()
 	return jf.jsonIoWriter.Write(msg)
 }
 
@@ -78,20 +79,29 @@ func (jf *jsonFileWriter) rotate() error {
 		return err
 	}
 	jf.Lock()
-	jf.Close()
-	jf.w = f
-	jf.Closer = f
+	jf.closeLocked()
+	jf.w = bufio.NewWriter(f)
+	jf.closer = f
 	jf.Unlock()
 	return nil
 }
 
 func (jf *jsonFileWriter) Close() error {
-	if jf.Closer == nil {
+	jf.Lock()
+	defer jf.Unlock()
+	return jf.closeLocked()
+}
+
+func (jf *jsonFileWriter) closeLocked() error {
+	if jf.closer == nil {
 		return nil
 	}
-	err := jf.Closer.Close()
+	err := jf.w.(*bufio.Writer).Flush()
 	if err == nil {
-		jf.Closer = nil
+		err = jf.closer.Close()
+	}
+	if err == nil {
+		jf.closer = nil
 		jf.w = nil
 	}
 	return err

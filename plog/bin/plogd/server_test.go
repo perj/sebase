@@ -84,7 +84,7 @@ func TestRotate(t *testing.T) {
 	if w.code != 200 && w.code != 0 { // 0 => unset, defaults to 200
 		t.Errorf("Got bad HTTP status %d", w.code)
 	}
-	if jf.w == nil || jf.Closer == nil {
+	if jf.w == nil || jf.closer == nil {
 		t.Errorf("Writer or Closer were unset. Got %#v", jf)
 	}
 	defer jf.Close()
@@ -92,7 +92,7 @@ func TestRotate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	jfinfo, err := jf.w.(*os.File).Stat()
+	jfinfo, err := jf.closer.(*os.File).Stat()
 	if err != nil {
 		t.Fatal(err)
 	}
