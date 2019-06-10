@@ -248,8 +248,7 @@ func main() {
 	case *logstashAddr != "":
 		dataStore.Output, err = NewNetWriter("tcp", *logstashAddr)
 	case *jsonFile != "":
-		w := &jsonFileWriter{path: *jsonFile}
-		err = w.rotate()
+		w, err := NewJsonFileWriter(*jsonFile)
 		if err == nil {
 			dataStore.Output = w
 			s.fileWriter = w

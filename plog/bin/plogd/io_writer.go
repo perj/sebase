@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"sync"
+	"time"
 )
 
 type ioWriter struct {
@@ -67,6 +69,16 @@ type jsonFileWriter struct {
 	sync.Mutex
 }
 
+func NewJsonFileWriter(file string) (*jsonFileWriter, error) {
+	w := &jsonFileWriter{path: file}
+	err := w.rotate()
+	if err != nil {
+		return nil, err
+	}
+	go w.flusherThread()
+	return w, nil
+}
+
 func (jf *jsonFileWriter) Write(msg LogMessage) error {
 	jf.Lock()
 	defer jf.Unlock()
@@ -105,4 +117,31 @@ func (jf *jsonFileWriter) closeLocked() error {
 		jf.w = nil
 	}
 	return err
+}
+
+func (jf *jsonFileWriter) flusherThread() {
+	const defaultPeriod = time.Second
+	const maxPeriod = time.Minute
+
+	period := defaultPeriod
+	for {
+		time.Sleep(period)
+		jf.Lock()
+		if jf.w == nil {
+			jf.Unlock()
+			return
+		}
+		err := jf.w.(*bufio.Writer).Flush()
+		jf.Unlock()
+		if err == nil {
+			period = defaultPeriod
+			continue
+		}
+
+		log.Print("Periodic flush failed:", err)
+		period *= 2
+		if period > maxPeriod {
+			period = maxPeriod
+		}
+	}
 }
