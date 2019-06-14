@@ -52,10 +52,15 @@ func FallbackFormatterSimple(key []FallbackKey, value []byte) (n int, err error)
 func FallbackFormatterJsonWrap(key []FallbackKey, value []byte) (n int, err error) {
 	var v = struct {
 		Time  time.Time       `json:"@timestamp"`
+		Prog  string          `json:"prog,omitempty"`
 		Type  string          `json:"type,omitempty"`
 		Key   []string        `json:"key,omitempty"`
 		Value json.RawMessage `json:"message"`
-	}{time.Now(), "", nil, value}
+	}{time.Now(), "", "", nil, value}
+	if len(key) > 1 {
+		v.Prog = key[0].Key
+		key = key[1:]
+	}
 	v.Type = key[len(key)-1].Key
 	v.Key = FallbackFormatKey(key[:len(key)-1])
 	ww, err := json.Marshal(v)

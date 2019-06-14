@@ -3,6 +3,19 @@
 // Package for logging and sending logs to a log server, where they'll be
 // aggregated into log objects and kept safe even if the client program exists
 // or crashes.
+//
+// The LogMsg class of functions are the latest and most useful ones.
+// You can either use the package level LogMsg with any key you wish
+// or use e.g. plog.Info.LogMsg for a standard "INFO" key.
+//
+// For advanced usage recursive plog contexts can be opened. They then
+// log a JSON object once all the contexts under the root are closed.
+// If plogd is running it will detect if a context was not closed
+// properly and log an "@interrupted" key which might be useful to find
+// which request caused an error.
+//
+// Various compatibility functions also exist, for example there are
+// Print and Printf package level functions.
 package plog
 
 import (
@@ -19,9 +32,9 @@ var SetupLevel = Info
 
 // Initializes the default plog context and changes SetupLevel based on a
 // string. Changes the functions used by the slog package to plog and also
-// calls log.SetOutput(plog.Info) to redirect log.Printf output to this package
-// as well as log.SetFlags(0). Finally checks if FallbackWriter is a TTY. If
-// so, changes FallbackFormatter to FallbackFormatterSimple.
+// calls log.SetOutput(plog.Info) to redirect log.Printf output to this
+// package, as well as log.SetFlags(0). Finally checks if FallbackWriter is a
+// TTY. If so, changes FallbackFormatter to FallbackFormatterSimple.
 func Setup(appname, lvl string) {
 	SetupLevel = LogLevel(lvl, SetupLevel)
 	Default = NewPlogLog(appname)

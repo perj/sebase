@@ -1,6 +1,11 @@
 package slog
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+
+	"golang.org/x/xerrors"
+)
 
 // KV can be used instead of a key-value pair in KVsMap function and any
 // function that use it, e.g. DefaultLogger.LogMsg.
@@ -9,6 +14,19 @@ type KV map[string]interface{}
 // ToMap returns kvs, it implements the ToMap interface.
 func (kvs KV) ToMap() map[string]interface{} {
 	return kvs
+}
+
+// Type KVError can be used to customize error printing via this packge.
+// If implemented, it should write values to m. The primary log message
+// should be written to the key given, but other keys can be added.
+// Make sure to do so in a responsible manner though, to not overwrite
+// other keys such as "msg". You can for example prefix your keys with
+// your package name.
+//
+// This interface is experimental and might be removed/changed in minor
+// versions.
+type KVError interface {
+	KVError(m map[string]interface{}, key string)
 }
 
 // ToMap is used to check arguments passed to KVsMap. If this function is
@@ -23,11 +41,21 @@ type ToMap interface {
 // If it's a map[string]interface{} then the contents is copied to the return value.
 // Same thing if it implements the ToMap interface, then the map contents is
 // copied.
+// If it's an error then the key is set to "error" and the argument is used as
+// a value.
 // If none of the types match, fmt.Sprint is used to convert to a string and the
-// next argument is used as value. Sometimes this happens if you forget to add
-// ... to expand the array when calling this function
+// next argument is used as value.
 // Error interface values are special handled, converted to the error message.
+// If they implement KVError that function is called instead, if they Formatter
+// from package golang.org/x/xerrors that is used to check for wrapped errors.
 func KVsMap(kvs ...interface{}) map[string]interface{} {
+	// Check for forgetting to add ...
+	if len(kvs) == 1 {
+		iarr, _ := kvs[0].([]interface{})
+		if iarr != nil {
+			kvs = iarr
+		}
+	}
 	m := make(map[string]interface{}, len(kvs)/2)
 	for i := 0; i < len(kvs); i++ {
 		switch k := kvs[i].(type) {
@@ -35,34 +63,89 @@ func KVsMap(kvs ...interface{}) map[string]interface{} {
 			var v interface{}
 			if i+1 < len(kvs) {
 				i++
-				v = kvsMapV(kvs[i])
+				v = kvs[i]
 			}
-			m[k] = v
+			kvsMapV(m, k, v)
 		case map[string]interface{}:
 			for mk, v := range k {
-				m[mk] = kvsMapV(v)
+				kvsMapV(m, mk, v)
 			}
 		case ToMap:
 			for mk, v := range k.ToMap() {
-				m[mk] = kvsMapV(v)
+				kvsMapV(m, mk, v)
 			}
+		case error:
+			kvsMapV(m, "error", k)
 		default:
 			mk := fmt.Sprint(k)
 			var v interface{}
 			if i+1 < len(kvs) {
 				i++
-				v = kvsMapV(kvs[i])
+				v = kvs[i]
 			}
-			m[mk] = v
+			kvsMapV(m, mk, v)
 		}
 	}
 	return m
 }
 
-func kvsMapV(v interface{}) interface{} {
+func kvsMapV(m map[string]interface{}, k string, v interface{}) {
 	switch v := v.(type) {
+	case string:
+		m[k] = v
+	case KVError:
+		v.KVError(m, k)
+	case xerrorsFormatter:
+		kvsMapXErrorsFormatter(m, k, v)
 	case error:
-		return v.Error()
+		m[k] = v.Error()
+	case fmt.Stringer:
+		m[k] = v.String()
+	default:
+		m[k] = v
 	}
-	return v
+}
+
+type xerrorsFormatter interface {
+	error
+	FormatError(p xerrors.Printer) error
+}
+
+func kvsMapXErrorsFormatter(m map[string]interface{}, k string, v xerrorsFormatter) {
+	var errs []string
+	var printer errorPrinter
+	for {
+		printer.dst.Reset()
+		err := v.FormatError(&printer)
+		errs = append(errs, printer.dst.String())
+		if err == nil {
+			break
+		}
+		v, _ = err.(xerrorsFormatter)
+		if v == nil {
+			errs = append(errs, err.Error())
+			break
+		}
+	}
+	if len(errs) == 1 {
+		m[k] = errs[0]
+	} else {
+		m[k] = errs
+	}
+}
+
+type errorPrinter struct {
+	dst strings.Builder
+}
+
+func (x *errorPrinter) Print(v ...interface{}) {
+	fmt.Fprint(&x.dst, v...)
+}
+
+func (x *errorPrinter) Printf(format string, v ...interface{}) {
+	fmt.Fprintf(&x.dst, format, v...)
+}
+
+func (x *errorPrinter) Detail() bool {
+	return false
 }

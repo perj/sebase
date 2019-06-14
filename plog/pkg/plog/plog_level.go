@@ -7,8 +7,7 @@ import (
 
 // Log with a standard level key.
 // Only logs if level is above the threshold given to Setup (defaults to Info).
-// The standard level key values should always be strings, this function will
-// thus format its arguments using fmt.Sprint rather than json encode it.
+// The value is formatted via fmt.Sprint. For JSON formatting use LogMsg.
 func (plog *Plog) LevelPrint(level Level, value ...interface{}) {
 	if plog == nil || level > SetupLevel {
 		return
@@ -18,8 +17,7 @@ func (plog *Plog) LevelPrint(level Level, value ...interface{}) {
 
 // Log with a standard level key.
 // Only logs if level is above the threshold given to Setup (defaults to Info).
-// The standard level key values should always be strings, this function will
-// thus format its arguments using fmt.Sprintf rather than json encode it.
+// The value is formatted via fmt.Sprintf. For JSON formatting use LogMsg.
 func (plog *Plog) LevelPrintf(level Level, format string, value ...interface{}) {
 	if plog == nil || level > SetupLevel {
 		return
@@ -105,16 +103,6 @@ func (plog *Plog) Debug(value ...interface{}) {
 // Shorthand for plog.LevelPrintf(Debug, value).
 func (plog *Plog) Debugf(format string, value ...interface{}) {
 	plog.LevelPrintf(Debug, format, value...)
-}
-
-// Shorthand for plog.LevelPrint(Info, value).
-func (plog *Plog) Print(value ...interface{}) {
-	plog.LevelPrint(Info, value...)
-}
-
-// Shorthand for plog.LevelPrintf(Info, value).
-func (plog *Plog) Printf(format string, value ...interface{}) {
-	plog.LevelPrintf(Info, format, value...)
 }
 
 // Logs value with Critical level, then calls os.Exit(1).

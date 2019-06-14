@@ -50,7 +50,7 @@ func TestFallbackJsonWrap(t *testing.T) {
 		FallbackFormatter = FallbackFormatterSimple
 	}()
 	Error.Print("fallback\n")
-	scan := `"type":"ERR","key":["test"],"message":"fallback"}`
+	scan := `"prog":"test","type":"ERR","message":"fallback"}`
 	if !strings.Contains(testStderr.String(), scan) {
 		t.Errorf(`%s wasn't logged to stderr. Have: %s`, scan, testStderr.String())
 	}

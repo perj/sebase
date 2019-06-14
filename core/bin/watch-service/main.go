@@ -21,12 +21,16 @@ import (
 	"strings"
 
 	"github.com/schibsted/sebase/core/internal/pkg/etcdlight"
+	"github.com/schibsted/sebase/core/pkg/sapp"
+	"github.com/schibsted/sebase/plog/pkg/plog"
 	yaml "gopkg.in/yaml.v2"
 )
 
 type clientSlice []string
 
 var (
+	app sapp.Sapp
+
 	host     = "*"
 	appl     = "mod_blocket"
 	noEtcd   = false
@@ -68,7 +72,8 @@ func main() {
 	flag.BoolVar(&watchall, "watch-all", watchall, "Watch for etcd events, all events are printed")
 	flag.BoolVar(&nodump, "nodump", nodump, "Don't print the initial fetch of all data. Use together with -watch")
 	flag.StringVar(&filter, "filter", filter, "Only output keys that match this regexp.")
-	flag.Parse()
+	app.Flags("", true)
+	app.Init("watch-service")
 
 	if filter != "" {
 		var err error
@@ -200,7 +205,7 @@ func etcdClients(kapi *etcdlight.KAPI, appl string) clientSlice {
 	r, err := kapi.Get(context.Background(), "/clients/"+appl, true)
 	if err != nil {
 		if !etcdlight.IsErrorCode(err, 100) { // Key not found
-			log.Print(err)
+			plog.Warning.LogMsg("Failed to fetch clients.", err)
 		}
 		return nil
 	}

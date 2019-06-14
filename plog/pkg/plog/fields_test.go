@@ -39,3 +39,11 @@ func TestFallbackLogger(t *testing.T) {
 		t.Errorf("fields weren't logged to stderr, got %s", testStderr.String())
 	}
 }
+
+func TestLevelTypeLogger(t *testing.T) {
+	testStderr.Reset()
+	TypeLogger(Info).With("a", "b").Msg("type logger info")
+	if !strings.Contains(testStderr.String(), `INFO: {"a":"b","msg":"type logger info"}`) {
+		t.Errorf("fields weren't logged to stderr, got %s", testStderr.String())
+	}
+}
