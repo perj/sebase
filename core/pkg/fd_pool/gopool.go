@@ -419,7 +419,11 @@ func (pool *GoPool) NewConn(ctx context.Context, service, portKey, remoteAddr st
 		portKey = mpk
 	}
 
-	c := &conn{pool: pool, service: service, srv: srv, remoteAddr: []byte(remoteAddr), portKey: strings.Split(portKey, ",")}
+	var sbseed []byte
+	if remoteAddr != "" {
+		sbseed = []byte(remoteAddr)
+	}
+	c := &conn{pool: pool, service: service, srv: srv, sbseed: sbseed, portKey: strings.Split(portKey, ",")}
 	return c.get(ctx, sbalance.Start)
 }
 
@@ -474,7 +478,7 @@ type conn struct {
 	pool       *GoPool
 	portKey    []string
 	portKeyIdx int
-	remoteAddr []byte
+	sbseed     []byte
 
 	service    string
 	srv        *fdService
@@ -533,7 +537,7 @@ func (c *conn) findConnset(status sbalance.ConnStatus) sbalance.ConnStatus {
 	if c.sb != c.srv.Service {
 		// The sb is updated, reset.
 		c.sb = c.srv.Service
-		c.sbconn = c.srv.NewConn(c.remoteAddr)
+		c.sbconn = c.srv.NewConn(c.sbseed)
 		status = sbalance.Start
 		c.newConnect = false
 		c.connset.Release()
