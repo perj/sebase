@@ -198,7 +198,7 @@ func TestReused(t *testing.T) {
 	}()
 
 	// Setup
-	port = ln.Addr().(*net.TCPAddr).Port
+	port := ln.Addr().(*net.TCPAddr).Port
 	pool := NewGoPool(nil)
 	defer pool.Close()
 	pool.AddSingle(context.TODO(), "test", "tcp", fmt.Sprintf("127.0.0.1:%d", port), DefaultRetries, 1*time.Second)
@@ -239,4 +239,23 @@ func TestReused(t *testing.T) {
 	lconn = <-lconch
 	lconn.Close()
 	c.Close()
+}
+
+func TestEmptyRemoteAddr(t *testing.T) {
+	pool := NewGoPool(nil)
+	defer pool.Close()
+	err := pool.AddSingle(context.TODO(), "test", "tcp", fmt.Sprintf("localhost:%d", port), 1, 1*time.Second)
+	if err != nil {
+		t.Fatal("addsingle", err)
+	}
+
+	c, err := pool.NewConn(context.TODO(), "test", "port", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	if c.(*conn).sbseed != nil {
+		t.Errorf("Expected nil sbseed, got %#v", c.(*conn).sbseed)
+	}
 }
