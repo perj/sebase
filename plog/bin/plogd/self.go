@@ -9,7 +9,7 @@ type selfSession struct {
 }
 
 func (s selfSession) Write(p []byte) (n int, err error) {
-	if err := s.Session.Writer.Write("log", string(p)); err != nil {
+	if err := s.Writer.Write("log", string(p)); err != nil {
 		return 0, err
 	}
 	return len(p), nil

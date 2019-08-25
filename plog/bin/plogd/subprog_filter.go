@@ -2,14 +2,19 @@
 
 package main
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/schibsted/sebase/plog/pkg/plogd"
+	"github.com/schibsted/sebase/util/pkg/slog"
+)
 
 type subprogFilter struct {
-	StorageOutput
+	plogd.OutputWriter
 	subprog []string
 }
 
-func (f *subprogFilter) Write(msg LogMessage) error {
+func (f *subprogFilter) WriteMessage(logmsg slog.Logger, msg plogd.LogMessage) {
 	progs := strings.SplitN(msg.Prog, "+", len(f.subprog)+1)
 	if len(progs) > 1 {
 		msg.Prog = progs[0]
@@ -23,5 +28,5 @@ func (f *subprogFilter) Write(msg LogMessage) error {
 			msg.KV[f.subprog[i]] = progs[i+1]
 		}
 	}
-	return f.StorageOutput.Write(msg)
+	f.OutputWriter.WriteMessage(logmsg, msg)
 }

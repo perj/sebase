@@ -22,6 +22,18 @@ import (
 // kvs.
 type Logger func(msg string, kvs ...interface{})
 
+// Printf calls l with the msg parameter created with fmt.Sprint.
+// It exists because some packages expect this interface.
+func (l Logger) Print(v ...interface{}) {
+	l(fmt.Sprint(v...))
+}
+
+// Printf calls l with the msg parameter created with fmt.Sprintf.
+// It exists because some packages expect this interface.
+func (l Logger) Printf(format string, v ...interface{}) {
+	l(fmt.Sprintf(format, v...))
+}
+
 // DefaultLogger is used as a default logger, wrapping a Printf like function.
 type DefaultLogger struct {
 	Logf func(format string, v ...interface{})

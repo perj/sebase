@@ -1,0 +1,6 @@
+GOMODULE(elasticsearch
+	destdir[lib/plogd/plugins]
+)
+
+GOTEST(sebase-plog-elasticsearch
+)

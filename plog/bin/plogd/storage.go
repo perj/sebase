@@ -10,16 +10,13 @@ import (
 	"time"
 
 	"github.com/schibsted/sebase/plog/internal/pkg/plogproto"
+	"github.com/schibsted/sebase/plog/pkg/plogd"
+	"github.com/schibsted/sebase/util/pkg/slog"
 )
 
 const (
 	interruptedKey = "@interrupted"
 )
-
-type StorageOutput interface {
-	Write(message LogMessage) error
-	Close() error
-}
 
 type smCode int
 
@@ -45,10 +42,18 @@ type Storage struct {
 	cbState         chan func(map[string]interface{})
 }
 
+func logger(prog string) slog.Logger {
+	// Discard recursive errors that use our own prog.
+	if prog == "plogd" {
+		return slog.DefaultLogger{nil}.LogMsg
+	}
+	return slog.Error
+}
+
 type DataStorage struct {
 	lock      sync.Mutex
 	ProgStore map[string]*Storage
-	Output    StorageOutput
+	Output    plogd.OutputWriter
 	dumpEmpty bool
 	// For tests
 	testStatePing chan struct{}
@@ -206,8 +211,8 @@ func sendState(dataStore *DataStorage, prog, keyPath string, value interface{}) 
 	for i := len(ks) - 1; i >= 0; i-- {
 		value = map[string]interface{}{ks[i]: value}
 	}
-	outMsg := LogMessage{time.Now(), prog, "state", value, nil, "", nil}
-	dataStore.Output.Write(outMsg)
+	outMsg := plogd.LogMessage{time.Now(), prog, "state", value, nil, "", nil}
+	dataStore.Output.WriteMessage(logger(prog), outMsg)
 }
 
 func updateState(dataStore *DataStorage, progStore *Storage, node map[string]interface{}, stype plogproto.CtxType, key string, value interface{}, confKey string) {
@@ -244,8 +249,8 @@ func updateState(dataStore *DataStorage, progStore *Storage, node map[string]int
 
 func dumpState(dataStore *DataStorage, progStore *Storage) {
 	if len(progStore.State) > 0 || dataStore.dumpEmpty {
-		outMsg := LogMessage{time.Now(), progStore.Prog, "state", progStore.State, nil, "", nil}
-		dataStore.Output.Write(outMsg)
+		outMsg := plogd.LogMessage{time.Now(), progStore.Prog, "state", progStore.State, nil, "", nil}
+		dataStore.Output.WriteMessage(logger(progStore.Prog), outMsg)
 	}
 }
 
@@ -340,8 +345,8 @@ func progStoreHandler(dataStore *DataStorage, progStore *Storage) {
 					if ts.IsZero() {
 						ts = nil
 					}
-					outMsg := LogMessage{time.Now(), progStore.Prog, inMsg.key, inMsg.value, ts, "", nil}
-					dataStore.Output.Write(outMsg)
+					outMsg := plogd.LogMessage{time.Now(), progStore.Prog, inMsg.key, inMsg.value, ts, "", nil}
+					dataStore.Output.WriteMessage(logger(progStore.Prog), outMsg)
 				}
 			}
 		}

@@ -9,8 +9,12 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"plugin"
 	"runtime"
 	"strings"
 	"sync"
@@ -18,6 +22,7 @@ import (
 	"time"
 
 	"github.com/schibsted/sebase/plog/internal/pkg/plogproto"
+	"github.com/schibsted/sebase/plog/pkg/plogd"
 )
 
 func handleOpenContext(sessionStore *SessionStorage, dataStore *DataStorage, parentSess *Session, info *plogproto.OpenContext) (*Session, error) {
@@ -196,7 +201,7 @@ func systemdMessage(message string) error {
 	return err
 }
 
-func filterOutput(out StorageOutput, subprog string) StorageOutput {
+func filterOutput(out plogd.OutputWriter, subprog string) plogd.OutputWriter {
 	if subprog != "" {
 		out = &subprogFilter{out, strings.Split(subprog, ",")}
 	}
@@ -204,6 +209,7 @@ func filterOutput(out StorageOutput, subprog string) StorageOutput {
 }
 
 func main() {
+	outPlugin := flag.String("output-plugin", "", "Use this plugin for output.")
 	logstashAddr := flag.String("json", os.Getenv("PLOG_JSON_ADDR"), "Connect to this logstash json compatible tcp address (host:port)")
 	jsonFile := flag.String("file", os.Getenv("PLOG_JSON_FILE"), "Write logs to this file, one json dictionary per line.")
 	sock := os.Getenv("PLOG_UNIX_SOCKET")
@@ -243,17 +249,26 @@ func main() {
 
 	var err error
 	switch {
-	case *logstashAddr != "" && *jsonFile != "":
-		err = fmt.Errorf("Only one of -json and -file can be used.")
 	case *logstashAddr != "":
+		if *outPlugin != "" || *jsonFile != "" {
+			err = fmt.Errorf("Only one of -json, -file and -output-plugin can be used.")
+			break
+		}
 		dataStore.Output, err = NewNetWriter("tcp", *logstashAddr)
 	case *jsonFile != "":
-		w, err := NewJsonFileWriter(*jsonFile)
-		if err == nil {
-			dataStore.Output = w
-			s.fileWriter = w
-			defer w.Close()
+		if *outPlugin != "" {
+			err = fmt.Errorf("Only one of -json, -file and -output-plugin can be used.")
+			break
 		}
+		var w *jsonFileWriter
+		w, err = NewJsonFileWriter(*jsonFile)
+		if err != nil {
+			break
+		}
+		dataStore.Output = w
+		s.fileWriter = w
+	case *outPlugin != "":
+		dataStore.Output, err = openOutputPlugin(*outPlugin)
 	default:
 		dataStore.Output = jsonIoWriter{os.Stdout}
 	}
@@ -261,6 +276,7 @@ func main() {
 		log.Fatal(err)
 	}
 	dataStore.Output = filterOutput(dataStore.Output, *subprog)
+	defer dataStore.Output.Close()
 
 	s.run(*httpAddr)
 
@@ -335,4 +351,39 @@ func main() {
 		}
 	}
 
+}
+
+func openOutputPlugin(pathstr string) (plogd.OutputWriter, error) {
+	purl, err := url.Parse(pathstr)
+	if err != nil {
+		return nil, err
+	}
+	var p *plugin.Plugin
+	if strings.HasSuffix(purl.Path, ".so") {
+		p, err = plugin.Open(purl.Path)
+	} else {
+		plogdPath := os.Args[0]
+		if !strings.Contains(plogdPath, "/") {
+			plogdPath, err = exec.LookPath(os.Args[0])
+			if err != nil {
+				err = fmt.Errorf("Can't determine plugin directory from executable name (%s)", os.Args[0])
+				return nil, err
+			}
+		}
+		mpath := filepath.Join(filepath.Dir(plogdPath), "../lib/plogd/plugins", purl.Path+".so")
+		p, err = plugin.Open(mpath)
+	}
+	if err != nil {
+		return nil, err
+	}
+	var f plugin.Symbol
+	f, err = p.Lookup("NewOutput")
+	if err != nil {
+		return nil, err
+	}
+	newout, ok := f.(func(url.Values, string) (plogd.OutputWriter, error))
+	if !ok {
+		return nil, fmt.Errorf("NewOutput function does not match expected signature plogd.NewOutputFunc, got %T", f)
+	}
+	return newout(purl.Query(), purl.Fragment)
 }
