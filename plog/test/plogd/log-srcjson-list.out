@@ -1,0 +1,1 @@
+{"@timestamp":".+","prog":"test","type":"INFO","message":\["foo"\](,"host":"127.0.0.1")?}

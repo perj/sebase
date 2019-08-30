@@ -6,6 +6,7 @@ print-tests:
 # shutting down, and blackhole second write.  Try again to check for this
 # regression.
 	@echo TEST: log-json-foo-bar log-json-foo-bar
+	@echo TEST: log-srcjson-list
 	@echo CLEANUP: plogd-stop
 	@echo CLEANUP: cleanup
 
@@ -20,5 +21,10 @@ plogd-stop:
 
 log-json-%:
 	PLOG_SOCKET=plog.sock plogger --appname test --type INFO < $@.in
+	go run json_reader.go 33333 1 > .json.out
+	match .json.out $@.out
+
+log-srcjson-%:
+	PLOG_SOCKET=plog.sock plogger --appname test --type INFO -json < $@.in
 	go run json_reader.go 33333 1 > .json.out
 	match .json.out $@.out

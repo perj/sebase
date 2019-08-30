@@ -9,9 +9,11 @@
 
 const char *appname;
 const char *type;
+const bool json;
 
 POPT_STRING("appname", NULL, &appname, "Appname to use. Defaults to the current user.");
 POPT_STRING("type", NULL, &type, "Message type to use. Defaults to log.");
+POPT_BOOL("json", false, &json, "Log each line as JSON instead of a string. The JSON is not verified, make sure it's valid.");
 
 int
 main(int argc, char *argv[]) {
@@ -32,7 +34,10 @@ main(int argc, char *argv[]) {
 	while ((l = getline(&line, &n, stdin)) >= 0) {
 		if (l > 0 && line[l - 1] == '\n')
 			l--;
-		plog_string_len(ctx, type, line, l);
+		if (json)
+			plog_json(ctx, type, line, l);
+		else
+			plog_string_len(ctx, type, line, l);
 	}
 	free(line);
 
