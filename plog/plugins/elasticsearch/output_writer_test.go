@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/schibsted/sebase/plog/pkg/plogd"
-	"github.com/schibsted/sebase/util/pkg/slog"
 )
 
 type TestBulkAction struct {
@@ -84,7 +84,8 @@ func TestOutputWriter(t *testing.T) {
 	defer ow.Close()
 	w := ow.(*OutputWriter)
 
-	w.WriteMessage(slog.Error, plogd.LogMessage{
+	ctx := plogd.ContextWithProg(context.Background(), "testprog")
+	w.WriteMessage(ctx, plogd.LogMessage{
 		Timestamp: ts,
 		Prog:      "testprog",
 		Type:      "test",

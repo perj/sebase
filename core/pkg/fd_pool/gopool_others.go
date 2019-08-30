@@ -3,6 +3,7 @@
 package fd_pool
 
 import (
+	"context"
 	"net"
 	"syscall"
 
@@ -10,7 +11,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func checkDeadConnection(netc net.Conn) (dead bool) {
+func checkDeadConnection(ctx context.Context, netc net.Conn) (dead bool) {
 	// If possible, test that the connection is valid.
 	// I've tested using netc.Write for this, but it didn't work.
 	// Instead call syscall.Poll directly.
@@ -29,9 +30,9 @@ func checkDeadConnection(netc net.Conn) (dead bool) {
 				}
 				dead = true
 				if err != nil {
-					slog.Debug("Not returning dead connection", "error", err)
+					slog.CtxDebug(ctx, "Not returning dead connection", "error", err)
 				} else {
-					slog.Debug("Not returning dead connection", "eof", true)
+					slog.CtxDebug(ctx, "Not returning dead connection", "eof", true)
 				}
 			})
 		}

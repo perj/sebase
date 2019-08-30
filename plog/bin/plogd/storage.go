@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"sync"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/schibsted/sebase/plog/internal/pkg/plogproto"
 	"github.com/schibsted/sebase/plog/pkg/plogd"
-	"github.com/schibsted/sebase/util/pkg/slog"
 )
 
 const (
@@ -42,12 +42,8 @@ type Storage struct {
 	cbState         chan func(map[string]interface{})
 }
 
-func logger(prog string) slog.Logger {
-	// Discard recursive errors that use our own prog.
-	if prog == "plogd" {
-		return slog.DefaultLogger{nil}.LogMsg
-	}
-	return slog.Error
+func progCtx(prog string) context.Context {
+	return plogd.ContextWithProg(context.Background(), prog)
 }
 
 type DataStorage struct {
@@ -203,7 +199,7 @@ func (parent *storageSession) OpenList(key string) (SessionOutput, error) {
 
 /* root session */
 
-func sendState(dataStore *DataStorage, prog, keyPath string, value interface{}) {
+func sendState(ctx context.Context, dataStore *DataStorage, prog, keyPath string, value interface{}) {
 	if value == nil {
 		return
 	}
@@ -212,7 +208,7 @@ func sendState(dataStore *DataStorage, prog, keyPath string, value interface{}) 
 		value = map[string]interface{}{ks[i]: value}
 	}
 	outMsg := plogd.LogMessage{time.Now(), prog, "state", value, nil, "", nil}
-	dataStore.Output.WriteMessage(logger(prog), outMsg)
+	dataStore.Output.WriteMessage(ctx, outMsg)
 }
 
 func updateState(dataStore *DataStorage, progStore *Storage, node map[string]interface{}, stype plogproto.CtxType, key string, value interface{}, confKey string) {
@@ -247,14 +243,14 @@ func updateState(dataStore *DataStorage, progStore *Storage, node map[string]int
 	}
 }
 
-func dumpState(dataStore *DataStorage, progStore *Storage) {
+func dumpState(ctx context.Context, dataStore *DataStorage, progStore *Storage) {
 	if len(progStore.State) > 0 || dataStore.dumpEmpty {
 		outMsg := plogd.LogMessage{time.Now(), progStore.Prog, "state", progStore.State, nil, "", nil}
-		dataStore.Output.WriteMessage(logger(progStore.Prog), outMsg)
+		dataStore.Output.WriteMessage(ctx, outMsg)
 	}
 }
 
-func sendForKeyPath(dataStore *DataStorage, progStore *Storage, keyPath string) {
+func sendForKeyPath(ctx context.Context, dataStore *DataStorage, progStore *Storage, keyPath string) {
 	node := progStore.State
 	ismap := true
 	var v interface{}
@@ -265,7 +261,7 @@ func sendForKeyPath(dataStore *DataStorage, progStore *Storage, keyPath string) 
 		v = node[key]
 		node, ismap = v.(map[string]interface{})
 	}
-	sendState(dataStore, progStore.Prog, keyPath, v)
+	sendState(ctx, dataStore, progStore.Prog, keyPath, v)
 }
 
 type progChannel struct {
@@ -292,6 +288,8 @@ func progStoreMuxer(out chan<- muxMessage, ch progChannel) {
 func progStoreHandler(dataStore *DataStorage, progStore *Storage) {
 	muxCh := make(chan muxMessage)
 	chs := make(map[plogproto.CtxType]chan storageMessage)
+	ctx, cancel := context.WithCancel(progCtx(progStore.Prog))
+	defer cancel()
 	for {
 		dataStore.lock.Lock()
 		select {
@@ -316,9 +314,9 @@ func progStoreHandler(dataStore *DataStorage, progStore *Storage) {
 				go progStoreMuxer(muxCh, ch)
 			case confKey := <-progStore.sendState:
 				if confKey == "" {
-					dumpState(dataStore, progStore)
+					dumpState(ctx, dataStore, progStore)
 				} else {
-					sendForKeyPath(dataStore, progStore, confKey)
+					sendForKeyPath(ctx, dataStore, progStore, confKey)
 				}
 			case cb := <-progStore.cbState:
 				cb(progStore.State)
@@ -346,7 +344,7 @@ func progStoreHandler(dataStore *DataStorage, progStore *Storage) {
 						ts = nil
 					}
 					outMsg := plogd.LogMessage{time.Now(), progStore.Prog, inMsg.key, inMsg.value, ts, "", nil}
-					dataStore.Output.WriteMessage(logger(progStore.Prog), outMsg)
+					dataStore.Output.WriteMessage(ctx, outMsg)
 				}
 			}
 		}
@@ -363,7 +361,7 @@ cbState:
 		}
 	}
 
-	dumpState(dataStore, progStore)
+	dumpState(ctx, dataStore, progStore)
 }
 
 func (store *DataStorage) findOutput(prog string, stype plogproto.CtxType) (SessionOutput, error) {

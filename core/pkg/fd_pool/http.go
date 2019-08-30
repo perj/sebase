@@ -30,7 +30,7 @@ func HttpRequest(ctx context.Context, conn NetConn, tlsconf *tls.Config, req *ht
 		if err == nil {
 			return hc, nil
 		}
-		slog.Error("Failed to send HTTP request", "error", err)
+		slog.CtxError(ctx, "Failed to send HTTP request", "error", err)
 		err = conn.Next(ctx, sbalance.Fail)
 		if err != nil {
 			return nil, err

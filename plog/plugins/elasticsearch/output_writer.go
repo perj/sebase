@@ -149,23 +149,23 @@ func (w *OutputWriter) configure(qs url.Values) error {
 
 // WriteMessage queues the message in the Elasticsearch processor which runs
 // asynchronously.
-func (w *OutputWriter) WriteMessage(logmsg slog.Logger, message plogd.LogMessage) {
+func (w *OutputWriter) WriteMessage(ctx context.Context, message plogd.LogMessage) {
 	req := elastic.NewBulkIndexRequest()
-	req.Index(w.index(logmsg, &message))
+	req.Index(w.index(ctx, &message))
 	if w.versionMajor < 7 {
 		req.Type("_doc")
 	}
-	req.Doc(w.message(logmsg, &message))
+	req.Doc(w.message(ctx, &message))
 	w.bulker.Add(req)
 }
 
 // index determines the index name to use based on config and message.
-func (w *OutputWriter) index(logmsg slog.Logger, message *plogd.LogMessage) string {
+func (w *OutputWriter) index(ctx context.Context, message *plogd.LogMessage) string {
 	var index strings.Builder
 	if w.indexTemplate != nil {
 		err := w.indexTemplate.Execute(&index, &message)
 		if err != nil {
-			logmsg("Failed to run index template", "error", err)
+			slog.CtxError(ctx, "Failed to run index template", "error", err)
 			index.Reset()
 			index.WriteString(w.conf.Index)
 		}
@@ -179,7 +179,7 @@ func (w *OutputWriter) index(logmsg slog.Logger, message *plogd.LogMessage) stri
 }
 
 // message determins the message to use based on config and input message.
-func (w *OutputWriter) message(logmsg slog.Logger, message *plogd.LogMessage) map[string]interface{} {
+func (w *OutputWriter) message(ctx context.Context, message *plogd.LogMessage) map[string]interface{} {
 	msg := message.ToMap()
 	msgkey := "message"
 	switch payload := msg["message"].(type) {
@@ -192,8 +192,8 @@ func (w *OutputWriter) message(logmsg slog.Logger, message *plogd.LogMessage) ma
 			if w.flattenObjects {
 				var m map[string]interface{}
 				err := json.Unmarshal(msg["message"].(json.RawMessage), &m)
-				if err != nil && message.Prog != "plogd" {
-					logmsg("Failed to unmarshal message", "error", err)
+				if err != nil {
+					slog.CtxError(ctx, "Failed to unmarshal message", "error", err)
 				}
 				return w.flattenObject(msg, m)
 			}

@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"log"
 	"net"
 	"os"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/schibsted/sebase/plog/pkg/plogd"
-	"github.com/schibsted/sebase/util/pkg/slog"
 )
 
 type netmsg int
@@ -136,7 +136,7 @@ func (wr *NetWriter) Close() error {
 	return nil
 }
 
-func (wr *NetWriter) WriteMessage(logmsg slog.Logger, msg plogd.LogMessage) {
+func (wr *NetWriter) WriteMessage(ctx context.Context, msg plogd.LogMessage) {
 	// msg.Host will be empty string here, add it.
 	if msg.Host == "" {
 		msg.Host = wr.LocalIp

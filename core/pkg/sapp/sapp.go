@@ -120,7 +120,7 @@ func (s *Sapp) AclMiddleware(h http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		if !s.Acl.CheckRequest(req) {
-			slog.Error("Request URL forbidden by ACL", "url", req.URL)
+			slog.CtxError(req.Context(), "Request URL forbidden by ACL", "url", req.URL)
 			http.Error(rw, "Forbidden by ACL", http.StatusForbidden)
 			return
 		}

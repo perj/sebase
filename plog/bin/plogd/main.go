@@ -321,6 +321,7 @@ func main() {
 		log.Fatal(err)
 	}
 	log.SetOutput(self)
+	self.InjectSlog()
 
 	if pidF != nil {
 		fmt.Fprintf(pidF, "%d\n", os.Getpid())
