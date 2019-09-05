@@ -2,8 +2,9 @@
 # Copyright 2018 Schibsted
 
 set -e
-img=$(docker build -q - < test/test.dockerfile)
-docker run --volume "$PWD:/sebase" -t --rm "$img" bash -e -x -c "
+iidfile="$(mktemp)"
+docker build --iidfile "$iidfile" - < test/test.dockerfile
+docker run --volume "$PWD:/sebase" -t --rm "$(< "$iidfile")" bash -e -x -c "
 	cd /sebase
 	seb
 	build/dev/bin/regress-runner --travis-fold
@@ -16,3 +17,4 @@ docker run --volume "$PWD:/sebase" -t --rm "$img" bash -e -x -c "
 	# Also test that building with explicit nocgo works.
 	seb -condition nocgo
 "
+rm -f "$iidfile"
