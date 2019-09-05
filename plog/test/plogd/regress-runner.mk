@@ -7,6 +7,8 @@ print-tests:
 # regression.
 	@echo TEST: log-json-foo-bar log-json-foo-bar
 	@echo TEST: log-srcjson-list
+	@echo TEST: plogd-stop plogd-es-start
+	@echo TEST: log-es-foo-bar
 	@echo CLEANUP: plogd-stop
 	@echo CLEANUP: cleanup
 
@@ -15,6 +17,9 @@ cleanup:
 
 plogd-start:
 	sd_start -- plogd -unix-socket plog.sock -json 127.0.0.1:33333 -httpd :8180
+
+plogd-es-start:
+	sd_start -- plogd -unix-socket plog.sock -output-plugin "elasticsearch?url=http://127.0.0.1:33333&sniff=false&nofail=true" -httpd :8180
 
 plogd-stop:
 	curl http://localhost:8180/stop
@@ -27,4 +32,9 @@ log-json-%:
 log-srcjson-%:
 	PLOG_SOCKET=plog.sock plogger --appname test --type INFO -json < $@.in
 	go run json_reader.go 33333 1 > .json.out
+	match .json.out $@.out
+
+log-es-%:
+	PLOG_SOCKET=plog.sock plogger --appname test --type INFO -json < $@.in
+	go run es_reader.go 33333 1 > .json.out
 	match .json.out $@.out

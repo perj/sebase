@@ -52,6 +52,20 @@ func (s selfSession) InjectSlog() {
 	slog.CtxDebug = selfSessionLevel{s, plog.Debug.Code()}.LogCtxMsg
 }
 
+func (s selfSession) ResetSlog() {
+	slog.Critical.SetLogPrintf()
+	slog.Error.SetLogPrintf()
+	slog.Warning.SetLogPrintf()
+	slog.Info.SetLogPrintf()
+	slog.Debug.Disable()
+
+	slog.CtxCritical.SetLogger(&slog.Critical)
+	slog.CtxError.SetLogger(&slog.Error)
+	slog.CtxWarning.SetLogger(&slog.Warning)
+	slog.CtxInfo.SetLogger(&slog.Info)
+	slog.CtxDebug.SetLogger(&slog.Debug)
+}
+
 type selfSessionLevel struct {
 	selfSession
 	level string

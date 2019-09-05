@@ -49,6 +49,7 @@ func progCtx(prog string) context.Context {
 type DataStorage struct {
 	lock      sync.Mutex
 	ProgStore map[string]*Storage
+	ProgGroup sync.WaitGroup
 	Output    plogd.OutputWriter
 	dumpEmpty bool
 	// For tests
@@ -289,6 +290,7 @@ func progStoreHandler(dataStore *DataStorage, progStore *Storage) {
 	muxCh := make(chan muxMessage)
 	chs := make(map[plogproto.CtxType]chan storageMessage)
 	ctx, cancel := context.WithCancel(progCtx(progStore.Prog))
+	defer dataStore.ProgGroup.Done()
 	defer cancel()
 	for {
 		dataStore.lock.Lock()
@@ -383,6 +385,7 @@ func (store *DataStorage) findOutput(prog string, stype plogproto.CtxType) (Sess
 		progStore.channelQueue = make(chan progChannel, 5)
 		progStore.cbState = make(chan func(map[string]interface{}), 1)
 
+		store.ProgGroup.Add(1)
 		go progStoreHandler(store, progStore)
 		store.ProgStore[prog] = progStore
 	} else {
@@ -438,4 +441,9 @@ func (store *DataStorage) CallbackState(prog string, cb func(map[string]interfac
 	default:
 		return false, ErrorTooManyConcurrentRequests
 	}
+}
+
+func (store *DataStorage) Close() error {
+	store.ProgGroup.Wait()
+	return nil
 }

@@ -104,6 +104,16 @@ func (d DefaultCtxLogger) LogMsg(ctx context.Context, msg string, kvs ...interfa
 	}
 }
 
+// SetLogger makes the CtxLogger log to the Logger, discarding the context.
+func (d *CtxLogger) SetLogger(l *Logger) {
+	*d = DefaultCtxLogger{l}.LogMsg
+}
+
+// Disable sets the receiver to discard messages.
+func (d *CtxLogger) Disable() {
+	*d = DefaultCtxLogger{nil}.LogMsg
+}
+
 var (
 	// CtxCritical is for errors that likely need operator interference.
 	CtxCritical CtxLogger = DefaultCtxLogger{&Critical}.LogMsg

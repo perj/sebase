@@ -1,0 +1,2 @@
+\{"index":\{"_index":"plog-..........","_type":"_doc"\}\}
+\{"@timestamp":"....-..-..T..:..:...+","object":\{"foo":"bar"\},"prog":"test","type":"INFO"\}

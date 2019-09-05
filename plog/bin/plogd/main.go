@@ -163,7 +163,9 @@ func listen(sessionStore *SessionStorage, dataStore *DataStorage, l net.Listener
 	for {
 		conn, err := pl.Accept()
 		if err != nil {
-			log.Print(err)
+			if !strings.Contains(err.Error(), "use of closed network connection") {
+				log.Print(err)
+			}
 			break
 		}
 
@@ -276,7 +278,6 @@ func main() {
 		log.Fatal(err)
 	}
 	dataStore.Output = filterOutput(dataStore.Output, *subprog)
-	defer dataStore.Output.Close()
 
 	s.run(*httpAddr)
 
@@ -336,13 +337,30 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
 
-	graceful := make(chan bool)
-	go func() { Work.Wait(); graceful <- true }()
+	self.ResetSlog()
+	log.SetOutput(os.Stderr)
+	self.Close(true)
+
+	graceful := make(chan struct{})
+	go func() { Work.Wait(); close(graceful) }()
 	select {
 	case <-graceful:
 	case <-time.After(5 * time.Second):
 		log.Print("Timed out waiting for sessions to finish.")
 	}
+	graceful = make(chan struct{})
+	go func() { dataStore.Close(); close(graceful) }()
+	select {
+	case <-graceful:
+	case <-time.After(5 * time.Second):
+		// Not safe to close output if this happens. Just exit.
+		log.Fatal("Timed out waiting for storage to close. Possible data loss.")
+	}
+
+	if err := dataStore.Output.Close(); err != nil {
+		log.Fatal(err)
+	}
+
 	for {
 		select {
 		case quitDoneCh <- struct{}{}:

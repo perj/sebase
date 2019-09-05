@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -19,6 +20,9 @@ import (
 // string is passed on to config.Parse except for these keys:
 //
 // url: Used as the Elasticsearch URL in config.Parse call.
+//
+// nofail: If true, failing the initial connection to elasticsearch is
+// nonfatal. It will be logged and tried again later.
 //
 // index-template: If set, defines a golang template to use to generate the
 // index name. Gets the plogd.LogMessage struct as input.
@@ -59,27 +63,42 @@ func NewOutput(qs url.Values, fragment string) (plogd.OutputWriter, error) {
 		w.indexTimeLayout = "plog-2006.01.02"
 	}
 
+	err = w.initClient()
+	if err != nil {
+		if !w.nofail {
+			return nil, err
+		}
+		slog.Error("Failed initial connection to Elasticsearch", "error", err)
+		w.client = nil
+	}
+	return &w, nil
+}
+
+func (w *OutputWriter) initClient() error {
+	var err error
 	w.client, err = elastic.NewClientFromConfig(w.conf)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if w.conf.Errorlog == "" {
 		elastic.SetErrorLog(slog.Error)(w.client)
 	}
 	version, err := w.client.ElasticsearchVersion(w.conf.URL)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	varr := strings.Split(version, ".")
 	w.versionMajor, _ = strconv.Atoi(varr[0])
 	var ctx context.Context
 	ctx, w.cancel = context.WithCancel(context.Background())
-	w.bulker, err = elastic.NewBulkProcessorService(w.client).FlushInterval(1 * time.Second).Do(ctx)
+	// Use StopBackoff to avoid hang in commit. The bulk processor
+	// will still wait and retry, but with the stop channel active.
+	w.bulker, err = elastic.NewBulkProcessorService(w.client).FlushInterval(1 * time.Second).Backoff(elastic.StopBackoff{}).Do(ctx)
 	if err != nil {
 		w.cancel()
-		return nil, err
+		w.cancel = nil
 	}
-	return &w, nil
+	return err
 }
 
 // OutputWriter is a plogd output writer for Elasticsearch
@@ -91,6 +110,10 @@ type OutputWriter struct {
 	stringKey, numberKey, nullKey string
 	boolKey, arrayKey, objectKey  string
 
+	nofail    bool
+	failQueue []plogd.LogMessage
+
+	connectLock  sync.Mutex
 	client       *elastic.Client
 	bulker       *elastic.BulkProcessor
 	cancel       context.CancelFunc
@@ -144,18 +167,47 @@ func (w *OutputWriter) configure(qs url.Values) error {
 	w.indexTimeLayout = qs.Get("index-time-layout")
 	delete(qs, "index-time-layout")
 
+	if v := qs.Get("nofail"); v != "" {
+		var err error
+		w.nofail, err = strconv.ParseBool(v)
+		if err != nil {
+			return err
+		}
+	}
+	delete(qs, "nofail")
+
 	return nil
 }
 
 // WriteMessage queues the message in the Elasticsearch processor which runs
-// asynchronously.
+// asynchronously. If there isn't any connection to elasticsearch yet because
+// of nofail, the message is queued in the writer instead waiting for the
+// connection to succeed.
 func (w *OutputWriter) WriteMessage(ctx context.Context, message plogd.LogMessage) {
+	if w.client == nil {
+		var err error
+		w.connectLock.Lock()
+		if w.client == nil {
+			err = w.initClient()
+		}
+		w.connectLock.Unlock()
+		if err != nil {
+			w.failQueue = append(w.failQueue, message)
+			slog.CtxError(ctx, "Connecting to Elasticsearch failed", "error", err)
+			return
+		}
+		for _, msg := range w.failQueue {
+			w.WriteMessage(ctx, msg)
+		}
+		w.failQueue = nil
+	}
 	req := elastic.NewBulkIndexRequest()
 	req.Index(w.index(ctx, &message))
 	if w.versionMajor < 7 {
 		req.Type("_doc")
 	}
 	req.Doc(w.message(ctx, &message))
+
 	w.bulker.Add(req)
 }
 
@@ -249,10 +301,12 @@ func (w *OutputWriter) flattenObject(msg, m map[string]interface{}) map[string]i
 
 // Close flushes and stops the writer bulk processor.
 func (w *OutputWriter) Close() error {
-	err := w.bulker.Flush()
-	if err == nil {
-		err = w.bulker.Close()
+	w.connectLock.Lock()
+	defer w.connectLock.Unlock()
+	if w.bulker == nil {
+		return nil
 	}
+	w.bulker.Flush()
 	w.cancel()
-	return err
+	return w.bulker.Close()
 }
