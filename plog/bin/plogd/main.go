@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -94,13 +95,24 @@ func handlePublishMessage(sess *Session, publish *plogproto.PlogMessage) error {
 	return sess.Writer.Write(key, v)
 }
 
-func handleConnection(sessionStore *SessionStorage, dataStore *DataStorage, r *plogproto.Reader) {
+func handleConnection(ctx context.Context, sessionStore *SessionStorage, dataStore *DataStorage, r *plogproto.Reader) {
 	sessCache := make(map[uint64]*Session)
 	var msg plogproto.Plog
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		<-ctx.Done()
+		r.Close()
+		close(done)
+	}()
+	defer func() {
+		cancel()
+		<-done
+	}()
 	for {
 		err := r.Receive(&msg)
 		if err != nil {
-			if err != io.EOF {
+			if err != io.EOF && !strings.Contains(err.Error(), "use of closed network connection") {
 				log.Print("Aborted connection: ", err)
 			}
 			break
@@ -158,7 +170,7 @@ var Work sync.WaitGroup
 var sigCh = make(chan os.Signal)
 var quitDoneCh = make(chan struct{})
 
-func listen(sessionStore *SessionStorage, dataStore *DataStorage, l net.Listener, seqpacket bool) {
+func listen(ctx context.Context, sessionStore *SessionStorage, dataStore *DataStorage, l net.Listener, seqpacket bool) {
 	pl := plogproto.Listener{l, seqpacket}
 	for {
 		conn, err := pl.Accept()
@@ -171,8 +183,7 @@ func listen(sessionStore *SessionStorage, dataStore *DataStorage, l net.Listener
 
 		Work.Add(1)
 		go func() {
-			handleConnection(sessionStore, dataStore, conn)
-			conn.Close()
+			handleConnection(ctx, sessionStore, dataStore, conn)
 			Work.Done()
 		}()
 	}
@@ -308,13 +319,14 @@ func main() {
 			}
 		}
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	for _, a := range addrs {
 		l, err := listenUnix(a[0], a[1])
 		if err != nil {
 			log.Fatal(err)
 		}
 		defer l.Close()
-		go listen(&sessionStore, &dataStore, l, a[0] == "unixpacket")
+		go listen(ctx, &sessionStore, &dataStore, l, a[0] == "unixpacket")
 	}
 
 	self, err := newSelfSession(&dataStore, &sessionStore)
@@ -340,6 +352,7 @@ func main() {
 	self.ResetSlog()
 	log.SetOutput(os.Stderr)
 	self.Close(true)
+	cancel()
 
 	graceful := make(chan struct{})
 	go func() { Work.Wait(); close(graceful) }()
@@ -348,6 +361,7 @@ func main() {
 	case <-time.After(5 * time.Second):
 		log.Print("Timed out waiting for sessions to finish.")
 	}
+
 	graceful = make(chan struct{})
 	go func() { dataStore.Close(); close(graceful) }()
 	select {
