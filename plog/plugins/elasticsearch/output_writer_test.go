@@ -82,10 +82,9 @@ func TestOutputWriter(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer ow.Close()
-	w := ow.(*OutputWriter)
 
 	ctx := plogd.ContextWithProg(context.Background(), "testprog")
-	w.WriteMessage(ctx, plogd.LogMessage{
+	ow.WriteMessage(ctx, plogd.LogMessage{
 		Timestamp: ts,
 		Prog:      "testprog",
 		Type:      "test",

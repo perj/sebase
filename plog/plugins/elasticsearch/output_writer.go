@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 	"text/template"
 	"time"
 
@@ -71,7 +70,7 @@ func NewOutput(qs url.Values, fragment string) (plogd.OutputWriter, error) {
 		slog.Error("Failed initial connection to Elasticsearch", "error", err)
 		w.client = nil
 	}
-	return &w, nil
+	return plogd.NewQueuedWriter(&w), nil
 }
 
 func (w *OutputWriter) initClient() error {
@@ -109,11 +108,8 @@ type OutputWriter struct {
 	flattenObjects                bool
 	stringKey, numberKey, nullKey string
 	boolKey, arrayKey, objectKey  string
+	nofail                        bool
 
-	nofail    bool
-	failQueue []plogd.LogMessage
-
-	connectLock  sync.Mutex
 	client       *elastic.Client
 	bulker       *elastic.BulkProcessor
 	cancel       context.CancelFunc
@@ -181,25 +177,15 @@ func (w *OutputWriter) configure(qs url.Values) error {
 
 // WriteMessage queues the message in the Elasticsearch processor which runs
 // asynchronously. If there isn't any connection to elasticsearch yet because
-// of nofail, the message is queued in the writer instead waiting for the
-// connection to succeed.
+// of nofail, this function blocks until it has a connection.
+// Since we're wrapped in a plogd.QueuedWriter this isn't normally a problem.
 func (w *OutputWriter) WriteMessage(ctx context.Context, message plogd.LogMessage) {
-	if w.client == nil {
-		var err error
-		w.connectLock.Lock()
-		if w.client == nil {
-			err = w.initClient()
-		}
-		w.connectLock.Unlock()
+	for w.client == nil {
+		err := w.initClient()
 		if err != nil {
-			w.failQueue = append(w.failQueue, message)
 			slog.CtxError(ctx, "Connecting to Elasticsearch failed", "error", err)
-			return
+			time.Sleep(500 * time.Second)
 		}
-		for _, msg := range w.failQueue {
-			w.WriteMessage(ctx, msg)
-		}
-		w.failQueue = nil
 	}
 	req := elastic.NewBulkIndexRequest()
 	req.Index(w.index(ctx, &message))
@@ -301,8 +287,6 @@ func (w *OutputWriter) flattenObject(msg, m map[string]interface{}) map[string]i
 
 // Close flushes and stops the writer bulk processor.
 func (w *OutputWriter) Close() error {
-	w.connectLock.Lock()
-	defer w.connectLock.Unlock()
 	if w.bulker == nil {
 		return nil
 	}
