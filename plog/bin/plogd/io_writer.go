@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,33 +12,38 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/schibsted/sebase/plog/pkg/plogd"
+	"github.com/schibsted/sebase/util/pkg/slog"
 )
 
 type ioWriter struct {
 	w io.Writer
 }
 
-func (out ioWriter) Write(msg LogMessage) error {
+func (out ioWriter) WriteMessage(ctx context.Context, msg plogd.LogMessage) {
 	fmt.Fprintln(out.w, "---")
 	fmt.Fprintln(out.w, msg.Prog)
 	fmt.Fprintln(out.w, msg.Type)
-	js, err := json.Marshal(msg.Data)
+	js, err := json.Marshal(msg.Message)
 	if err != nil {
-		panic(err)
+		slog.CtxError(ctx, "Failed to marshal message", "error", err, "message", fmt.Sprint(msg.Message))
+		return
 	}
 	js = append(js, byte('\n'))
 	_, err = out.w.Write(js)
 	if err != nil {
-		panic(err)
+		slog.CtxError(ctx, "Failed to write message", "error", err, "json", js)
+		return
 	}
 	for k, v := range msg.KV {
 		vs, err := json.Marshal(v)
 		if err != nil {
-			panic(err)
+			slog.CtxError(ctx, "Failed to marshal key-value", "error", err, "key", k, "value", fmt.Sprint(v))
+			continue
 		}
 		fmt.Fprintf(out.w, "%s: %s\n", k, vs)
 	}
-	return nil
 }
 
 func (out ioWriter) Close() error {
@@ -48,14 +54,17 @@ type jsonIoWriter struct {
 	w io.Writer
 }
 
-func (wr jsonIoWriter) Write(msg LogMessage) error {
-	body, err := msg.ToJSON()
+func (wr jsonIoWriter) WriteMessage(ctx context.Context, msg plogd.LogMessage) {
+	body, err := msg.MarshalJSON()
 	if err != nil {
-		return err
+		slog.CtxError(ctx, "Failed to marshal message", "error", err, "msg", fmt.Sprint(msg))
+		return
 	}
 	body = append(body, '\n')
 	_, err = wr.w.Write(body)
-	return err
+	if err != nil {
+		slog.CtxError(ctx, "Failed to write message", "error", err, "body", body)
+	}
 }
 
 func (wr jsonIoWriter) Close() error {
@@ -79,10 +88,10 @@ func NewJsonFileWriter(file string) (*jsonFileWriter, error) {
 	return w, nil
 }
 
-func (jf *jsonFileWriter) Write(msg LogMessage) error {
+func (jf *jsonFileWriter) WriteMessage(ctx context.Context, msg plogd.LogMessage) {
 	jf.Lock()
 	defer jf.Unlock()
-	return jf.jsonIoWriter.Write(msg)
+	jf.jsonIoWriter.WriteMessage(ctx, msg)
 }
 
 func (jf *jsonFileWriter) rotate() error {

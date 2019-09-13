@@ -4,12 +4,15 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"log"
 	"net"
 	"os"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/schibsted/sebase/plog/pkg/plogd"
 )
 
 type netmsg int
@@ -133,18 +136,17 @@ func (wr *NetWriter) Close() error {
 	return nil
 }
 
-func (wr *NetWriter) Write(msg LogMessage) error {
+func (wr *NetWriter) WriteMessage(ctx context.Context, msg plogd.LogMessage) {
 	// msg.Host will be empty string here, add it.
 	if msg.Host == "" {
 		msg.Host = wr.LocalIp
 	}
-	body, err := msg.ToJSON()
+	body, err := msg.MarshalJSON()
 	if err != nil {
-		return err
+		panic(err)
 	}
 	body = append(body, '\n')
 	wr.data <- body
-	return nil
 }
 
 func (wr *NetWriter) ResetBuffer(newbuf []byte) []byte {

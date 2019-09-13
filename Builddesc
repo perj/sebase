@@ -23,6 +23,8 @@ COMPONENT([
 	plog/lib
 	plog/modules/sysloghook
 	plog/pkg/plog
+	plog/pkg/plogd
+	plog/plugins/elasticsearch
 	util/bin/git-subproj
 	util/bin/keyid
 	util/bin/match

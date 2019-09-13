@@ -56,7 +56,7 @@ func (cl *KAPI) do(ctx context.Context, method, key string, qs, body url.Values)
 	if len(body) > 0 {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
-	slog.Debug("etcdlight http request", "url", rqurl.String())
+	slog.CtxDebug(ctx, "etcdlight http request", "url", rqurl.String())
 	return cl.Client.Do(req.WithContext(ctx))
 }
 

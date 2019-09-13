@@ -16,7 +16,7 @@ func (kvs KV) ToMap() map[string]interface{} {
 	return kvs
 }
 
-// Type KVError can be used to customize error printing via this packge.
+// KVError can be used to customize error printing via this packge.
 // If implemented, it should write values to m. The primary log message
 // should be written to the key given, but other keys can be added.
 // Make sure to do so in a responsible manner though, to not overwrite

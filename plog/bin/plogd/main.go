@@ -3,14 +3,19 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"plugin"
 	"runtime"
 	"strings"
 	"sync"
@@ -18,6 +23,7 @@ import (
 	"time"
 
 	"github.com/schibsted/sebase/plog/internal/pkg/plogproto"
+	"github.com/schibsted/sebase/plog/pkg/plogd"
 )
 
 func handleOpenContext(sessionStore *SessionStorage, dataStore *DataStorage, parentSess *Session, info *plogproto.OpenContext) (*Session, error) {
@@ -89,13 +95,24 @@ func handlePublishMessage(sess *Session, publish *plogproto.PlogMessage) error {
 	return sess.Writer.Write(key, v)
 }
 
-func handleConnection(sessionStore *SessionStorage, dataStore *DataStorage, r *plogproto.Reader) {
+func handleConnection(ctx context.Context, sessionStore *SessionStorage, dataStore *DataStorage, r *plogproto.Reader) {
 	sessCache := make(map[uint64]*Session)
 	var msg plogproto.Plog
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		<-ctx.Done()
+		r.Close()
+		close(done)
+	}()
+	defer func() {
+		cancel()
+		<-done
+	}()
 	for {
 		err := r.Receive(&msg)
 		if err != nil {
-			if err != io.EOF {
+			if err != io.EOF && !strings.Contains(err.Error(), "use of closed network connection") {
 				log.Print("Aborted connection: ", err)
 			}
 			break
@@ -153,19 +170,20 @@ var Work sync.WaitGroup
 var sigCh = make(chan os.Signal)
 var quitDoneCh = make(chan struct{})
 
-func listen(sessionStore *SessionStorage, dataStore *DataStorage, l net.Listener, seqpacket bool) {
+func listen(ctx context.Context, sessionStore *SessionStorage, dataStore *DataStorage, l net.Listener, seqpacket bool) {
 	pl := plogproto.Listener{l, seqpacket}
 	for {
 		conn, err := pl.Accept()
 		if err != nil {
-			log.Print(err)
+			if !strings.Contains(err.Error(), "use of closed network connection") {
+				log.Print(err)
+			}
 			break
 		}
 
 		Work.Add(1)
 		go func() {
-			handleConnection(sessionStore, dataStore, conn)
-			conn.Close()
+			handleConnection(ctx, sessionStore, dataStore, conn)
 			Work.Done()
 		}()
 	}
@@ -196,7 +214,7 @@ func systemdMessage(message string) error {
 	return err
 }
 
-func filterOutput(out StorageOutput, subprog string) StorageOutput {
+func filterOutput(out plogd.OutputWriter, subprog string) plogd.OutputWriter {
 	if subprog != "" {
 		out = &subprogFilter{out, strings.Split(subprog, ",")}
 	}
@@ -204,6 +222,7 @@ func filterOutput(out StorageOutput, subprog string) StorageOutput {
 }
 
 func main() {
+	outPlugin := flag.String("output-plugin", "", "Use this plugin for output.")
 	logstashAddr := flag.String("json", os.Getenv("PLOG_JSON_ADDR"), "Connect to this logstash json compatible tcp address (host:port)")
 	jsonFile := flag.String("file", os.Getenv("PLOG_JSON_FILE"), "Write logs to this file, one json dictionary per line.")
 	sock := os.Getenv("PLOG_UNIX_SOCKET")
@@ -243,17 +262,26 @@ func main() {
 
 	var err error
 	switch {
-	case *logstashAddr != "" && *jsonFile != "":
-		err = fmt.Errorf("Only one of -json and -file can be used.")
 	case *logstashAddr != "":
+		if *outPlugin != "" || *jsonFile != "" {
+			err = fmt.Errorf("Only one of -json, -file and -output-plugin can be used.")
+			break
+		}
 		dataStore.Output, err = NewNetWriter("tcp", *logstashAddr)
 	case *jsonFile != "":
-		w, err := NewJsonFileWriter(*jsonFile)
-		if err == nil {
-			dataStore.Output = w
-			s.fileWriter = w
-			defer w.Close()
+		if *outPlugin != "" {
+			err = fmt.Errorf("Only one of -json, -file and -output-plugin can be used.")
+			break
 		}
+		var w *jsonFileWriter
+		w, err = NewJsonFileWriter(*jsonFile)
+		if err != nil {
+			break
+		}
+		dataStore.Output = w
+		s.fileWriter = w
+	case *outPlugin != "":
+		dataStore.Output, err = openOutputPlugin(*outPlugin)
 	default:
 		dataStore.Output = jsonIoWriter{os.Stdout}
 	}
@@ -291,13 +319,14 @@ func main() {
 			}
 		}
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	for _, a := range addrs {
 		l, err := listenUnix(a[0], a[1])
 		if err != nil {
 			log.Fatal(err)
 		}
 		defer l.Close()
-		go listen(&sessionStore, &dataStore, l, a[0] == "unixpacket")
+		go listen(ctx, &sessionStore, &dataStore, l, a[0] == "unixpacket")
 	}
 
 	self, err := newSelfSession(&dataStore, &sessionStore)
@@ -305,6 +334,7 @@ func main() {
 		log.Fatal(err)
 	}
 	log.SetOutput(self)
+	self.InjectSlog()
 
 	if pidF != nil {
 		fmt.Fprintf(pidF, "%d\n", os.Getpid())
@@ -319,13 +349,32 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
 
-	graceful := make(chan bool)
-	go func() { Work.Wait(); graceful <- true }()
+	self.ResetSlog()
+	log.SetOutput(os.Stderr)
+	self.Close(true)
+	cancel()
+
+	graceful := make(chan struct{})
+	go func() { Work.Wait(); close(graceful) }()
 	select {
 	case <-graceful:
 	case <-time.After(5 * time.Second):
 		log.Print("Timed out waiting for sessions to finish.")
 	}
+
+	graceful = make(chan struct{})
+	go func() { dataStore.Close(); close(graceful) }()
+	select {
+	case <-graceful:
+	case <-time.After(5 * time.Second):
+		// Not safe to close output if this happens. Just exit.
+		log.Fatal("Timed out waiting for storage to close. Possible data loss.")
+	}
+
+	if err := dataStore.Output.Close(); err != nil {
+		log.Fatal(err)
+	}
+
 	for {
 		select {
 		case quitDoneCh <- struct{}{}:
@@ -335,4 +384,39 @@ func main() {
 		}
 	}
 
+}
+
+func openOutputPlugin(pathstr string) (plogd.OutputWriter, error) {
+	purl, err := url.Parse(pathstr)
+	if err != nil {
+		return nil, err
+	}
+	var p *plugin.Plugin
+	if strings.HasSuffix(purl.Path, ".so") {
+		p, err = plugin.Open(purl.Path)
+	} else {
+		plogdPath := os.Args[0]
+		if !strings.Contains(plogdPath, "/") {
+			plogdPath, err = exec.LookPath(os.Args[0])
+			if err != nil {
+				err = fmt.Errorf("Can't determine plugin directory from executable name (%s)", os.Args[0])
+				return nil, err
+			}
+		}
+		mpath := filepath.Join(filepath.Dir(plogdPath), "../lib/plogd/plugins", purl.Path+".so")
+		p, err = plugin.Open(mpath)
+	}
+	if err != nil {
+		return nil, err
+	}
+	var f plugin.Symbol
+	f, err = p.Lookup("NewOutput")
+	if err != nil {
+		return nil, err
+	}
+	newout, ok := f.(func(url.Values, string) (plogd.OutputWriter, error))
+	if !ok {
+		return nil, fmt.Errorf("NewOutput function does not match expected signature plogd.NewOutputFunc, got %T", f)
+	}
+	return newout(purl.Query(), purl.Fragment)
 }

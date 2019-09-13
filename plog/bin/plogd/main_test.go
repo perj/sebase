@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"io"
 	"runtime"
@@ -43,7 +44,7 @@ func testConnect() *plogproto.Writer {
 
 	go func() {
 		r := plogproto.NewReader(inputR, true)
-		handleConnection(&sessionStore, &dataStore, r)
+		handleConnection(context.TODO(), &sessionStore, &dataStore, r)
 		inputR.Close()
 	}()
 

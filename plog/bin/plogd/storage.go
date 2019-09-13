@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"sync"
@@ -10,16 +11,12 @@ import (
 	"time"
 
 	"github.com/schibsted/sebase/plog/internal/pkg/plogproto"
+	"github.com/schibsted/sebase/plog/pkg/plogd"
 )
 
 const (
 	interruptedKey = "@interrupted"
 )
-
-type StorageOutput interface {
-	Write(message LogMessage) error
-	Close() error
-}
 
 type smCode int
 
@@ -45,10 +42,15 @@ type Storage struct {
 	cbState         chan func(map[string]interface{})
 }
 
+func progCtx(prog string) context.Context {
+	return plogd.ContextWithProg(context.Background(), prog)
+}
+
 type DataStorage struct {
 	lock      sync.Mutex
 	ProgStore map[string]*Storage
-	Output    StorageOutput
+	ProgGroup sync.WaitGroup
+	Output    plogd.OutputWriter
 	dumpEmpty bool
 	// For tests
 	testStatePing chan struct{}
@@ -198,7 +200,7 @@ func (parent *storageSession) OpenList(key string) (SessionOutput, error) {
 
 /* root session */
 
-func sendState(dataStore *DataStorage, prog, keyPath string, value interface{}) {
+func sendState(ctx context.Context, dataStore *DataStorage, prog, keyPath string, value interface{}) {
 	if value == nil {
 		return
 	}
@@ -206,8 +208,8 @@ func sendState(dataStore *DataStorage, prog, keyPath string, value interface{}) 
 	for i := len(ks) - 1; i >= 0; i-- {
 		value = map[string]interface{}{ks[i]: value}
 	}
-	outMsg := LogMessage{time.Now(), prog, "state", value, nil, "", nil}
-	dataStore.Output.Write(outMsg)
+	outMsg := plogd.LogMessage{time.Now(), prog, "state", value, nil, "", nil}
+	dataStore.Output.WriteMessage(ctx, outMsg)
 }
 
 func updateState(dataStore *DataStorage, progStore *Storage, node map[string]interface{}, stype plogproto.CtxType, key string, value interface{}, confKey string) {
@@ -242,14 +244,14 @@ func updateState(dataStore *DataStorage, progStore *Storage, node map[string]int
 	}
 }
 
-func dumpState(dataStore *DataStorage, progStore *Storage) {
+func dumpState(ctx context.Context, dataStore *DataStorage, progStore *Storage) {
 	if len(progStore.State) > 0 || dataStore.dumpEmpty {
-		outMsg := LogMessage{time.Now(), progStore.Prog, "state", progStore.State, nil, "", nil}
-		dataStore.Output.Write(outMsg)
+		outMsg := plogd.LogMessage{time.Now(), progStore.Prog, "state", progStore.State, nil, "", nil}
+		dataStore.Output.WriteMessage(ctx, outMsg)
 	}
 }
 
-func sendForKeyPath(dataStore *DataStorage, progStore *Storage, keyPath string) {
+func sendForKeyPath(ctx context.Context, dataStore *DataStorage, progStore *Storage, keyPath string) {
 	node := progStore.State
 	ismap := true
 	var v interface{}
@@ -260,7 +262,7 @@ func sendForKeyPath(dataStore *DataStorage, progStore *Storage, keyPath string) 
 		v = node[key]
 		node, ismap = v.(map[string]interface{})
 	}
-	sendState(dataStore, progStore.Prog, keyPath, v)
+	sendState(ctx, dataStore, progStore.Prog, keyPath, v)
 }
 
 type progChannel struct {
@@ -287,6 +289,9 @@ func progStoreMuxer(out chan<- muxMessage, ch progChannel) {
 func progStoreHandler(dataStore *DataStorage, progStore *Storage) {
 	muxCh := make(chan muxMessage)
 	chs := make(map[plogproto.CtxType]chan storageMessage)
+	ctx, cancel := context.WithCancel(progCtx(progStore.Prog))
+	defer dataStore.ProgGroup.Done()
+	defer cancel()
 	for {
 		dataStore.lock.Lock()
 		select {
@@ -311,9 +316,9 @@ func progStoreHandler(dataStore *DataStorage, progStore *Storage) {
 				go progStoreMuxer(muxCh, ch)
 			case confKey := <-progStore.sendState:
 				if confKey == "" {
-					dumpState(dataStore, progStore)
+					dumpState(ctx, dataStore, progStore)
 				} else {
-					sendForKeyPath(dataStore, progStore, confKey)
+					sendForKeyPath(ctx, dataStore, progStore, confKey)
 				}
 			case cb := <-progStore.cbState:
 				cb(progStore.State)
@@ -340,8 +345,8 @@ func progStoreHandler(dataStore *DataStorage, progStore *Storage) {
 					if ts.IsZero() {
 						ts = nil
 					}
-					outMsg := LogMessage{time.Now(), progStore.Prog, inMsg.key, inMsg.value, ts, "", nil}
-					dataStore.Output.Write(outMsg)
+					outMsg := plogd.LogMessage{time.Now(), progStore.Prog, inMsg.key, inMsg.value, ts, "", nil}
+					dataStore.Output.WriteMessage(ctx, outMsg)
 				}
 			}
 		}
@@ -358,7 +363,7 @@ cbState:
 		}
 	}
 
-	dumpState(dataStore, progStore)
+	dumpState(ctx, dataStore, progStore)
 }
 
 func (store *DataStorage) findOutput(prog string, stype plogproto.CtxType) (SessionOutput, error) {
@@ -380,6 +385,7 @@ func (store *DataStorage) findOutput(prog string, stype plogproto.CtxType) (Sess
 		progStore.channelQueue = make(chan progChannel, 5)
 		progStore.cbState = make(chan func(map[string]interface{}), 1)
 
+		store.ProgGroup.Add(1)
 		go progStoreHandler(store, progStore)
 		store.ProgStore[prog] = progStore
 	} else {
@@ -435,4 +441,9 @@ func (store *DataStorage) CallbackState(prog string, cb func(map[string]interfac
 	default:
 		return false, ErrorTooManyConcurrentRequests
 	}
+}
+
+func (store *DataStorage) Close() error {
+	store.ProgGroup.Wait()
+	return nil
 }

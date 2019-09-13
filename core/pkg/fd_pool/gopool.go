@@ -400,7 +400,7 @@ func (pool *GoPool) NewConn(ctx context.Context, service, portKey, remoteAddr st
 		if pool.sdReg == nil {
 			return nil, NoSuchService
 		}
-		slog.Info("NewConn adding service", "service", service)
+		slog.CtxInfo(ctx, "NewConn adding service", "service", service)
 		srv = pool.getService(service, DefaultRetries, DefaultConnectTimeout)
 		srv.sblock.Lock()
 		if srv.sdConn == nil {
@@ -584,7 +584,7 @@ func (c *conn) get(ctx context.Context, status sbalance.ConnStatus) (NetConn, er
 			netc := c.connset.conns[0]
 			c.connset.conns = c.connset.conns[1:]
 
-			if checkDeadConnection(netc) {
+			if checkDeadConnection(ctx, netc) {
 				netc.Close()
 				continue
 			}
@@ -593,7 +593,7 @@ func (c *conn) get(ctx context.Context, status sbalance.ConnStatus) (NetConn, er
 			c.SetDeadline(time.Time{})
 			c.connset.Unlock()
 			c.newConnect = false
-			slog.Debug("Reusing connection", "peer", c.connset.port.Addr)
+			slog.CtxDebug(ctx, "Reusing connection", "peer", c.connset.port.Addr)
 			return c, nil
 		}
 		c.connset.Unlock()
