@@ -1,4 +1,4 @@
-// Copyright 2018 Schibsted
+// Copyright 2020 Schibsted
 
 package plog
 
@@ -17,11 +17,13 @@ import (
 	"github.com/schibsted/sebase/util/pkg/slog"
 )
 
-// A plog context is an object opened in the log server. The server will
+// Plog is a context object opened in the log server. The server will
 // keep track of it and all its contents until it's closed (and beyond,
 // in case of state contexts). If a program crashes/exits without closing
 // the context the server will detect this and log an "@interrupted" key
 // for easier debugging.
+// Can also be used without the log server in which case it logs to the
+// fallback writer.
 type Plog struct {
 	pctx *Plog
 
@@ -40,8 +42,8 @@ var Default *Plog
 // used in case we use a fallback when plogd is not running.
 var ctxId uint64
 
-// Returns the default context if the level is enabled by the threshold given
-// to setup, otherwise nil.
+// IfEnabled returns the default context if the level is enabled by the
+// threshold given to setup, otherwise nil.
 // It's safe to call functions on nil contexts.
 func IfEnabled(lvl Level) *Plog {
 	if lvl > SetupLevel {
@@ -50,24 +52,24 @@ func IfEnabled(lvl Level) *Plog {
 	return Default
 }
 
-// Open a new root logging plog context.
+// NewPlogLog opens a new root logging plog context.
 // If you called Setup, then you should probably use Default instead of this.
 func NewPlogLog(appname string) *Plog {
 	return openRoot([]string{appname}, plogproto.CtxType_log)
 }
 
-// Open a new root state plog context. State is kept in plogd and only logged
-// with a "state" key once all state contexts for the appname are closed. You
-// can also query it over HTTP from plogd.
+// NewPlogState opens a new root state plog context. State is kept in plogd and
+// only logged with a "state" key once all state contexts for the appname are
+// closed. You can also query it over HTTP from plogd.
 func NewPlogState(appname string) *Plog {
 	return openRoot([]string{appname}, plogproto.CtxType_state)
 }
 
-// Open a new root count plog context.  When integers are logged in this
-// context, it's applied as a delta to the state. When the context is closed
-// the integer values added are removed. Can be used to keep statistics such as
-// number of open fds and aggregate them between multiple processes with the
-// same name.
+// NewPlogCount opens a new root count plog context.  When integers are logged
+// in this context, it's applied as a delta to the state. When the context is
+// closed the integer values added are removed. Can be used to keep statistics
+// such as number of open fds and aggregate them between multiple processes
+// with the same name.
 func NewPlogCount(appname string, path ...string) *Plog {
 	return openRoot(append([]string{appname}, path...), plogproto.CtxType_count)
 }
@@ -84,36 +86,36 @@ func openRoot(key []string, ctype plogproto.CtxType) *Plog {
 	return ctx
 }
 
-// Opens a sub-context dictionary. Once this and any sub-contexts to it are
-// closed, a dictionary object will be logged in the parent plog.
-func (pctx *Plog) OpenDict(key string) *Plog {
-	return pctx.openSub([]string{key}, plogproto.CtxType_dict)
+// OpenDict opens a sub-context dictionary. Once this and any sub-contexts to
+// it are closed, a dictionary object will be logged in the parent plog.
+func (ctx *Plog) OpenDict(key string) *Plog {
+	return ctx.openSub([]string{key}, plogproto.CtxType_dict)
 }
 
-// Opens a sub-context list. Once this and any sub-contexts to it are closed, a
-// list will be logged in the parent plog.
-func (pctx *Plog) OpenList(key string) *Plog {
-	return pctx.openSub([]string{key}, plogproto.CtxType_list)
+// OpenList opens a sub-context list. Once this and any sub-contexts to it are
+// closed, a list will be logged in the parent plog.
+func (ctx *Plog) OpenList(key string) *Plog {
+	return ctx.openSub([]string{key}, plogproto.CtxType_list)
 }
 
-func (pctx *Plog) openSub(key []string, ctype plogproto.CtxType) *Plog {
-	if pctx == nil {
+func (ctx *Plog) openSub(key []string, ctype plogproto.CtxType) *Plog {
+	if ctx == nil {
 		return nil
 	}
-	ctx := &Plog{pctx: pctx}
-	ctx.conn, ctx.generation = pctx.conn.retain()
-	ctx.ctype = ctype
-	ctx.id = atomic.AddUint64(&ctxId, 1)
-	ctx.key = key
-	if !ctx.openContext() {
-		ctx.conn.reconnect()
-		ctx.checkGeneration()
-		if ctx.conn.Writer == nil {
+	sctx := &Plog{pctx: ctx}
+	sctx.conn, sctx.generation = ctx.conn.retain()
+	sctx.ctype = ctype
+	sctx.id = atomic.AddUint64(&ctxId, 1)
+	sctx.key = key
+	if !sctx.openContext() {
+		sctx.conn.reconnect()
+		sctx.checkGeneration()
+		if sctx.conn.Writer == nil {
 			ts, _ := json.Marshal(time.Now())
-			ctx.fallbackWrite("start_timestamp", ts)
+			sctx.fallbackWrite("start_timestamp", ts)
 		}
 	}
-	return ctx
+	return sctx
 }
 
 // Close the context, marking it as properly closed in the server.
@@ -134,9 +136,10 @@ func (ctx *Plog) Close() error {
 	return err
 }
 
-// Encode value as JSON and log it. Might return errors from json.Marshal,
-// but that should only happen in very rare cases. For strings, ints and
-// other basic types you can ignore the return value.
+// Log encodes value as JSON and logs it. Might return errors from
+// json.Marshal, but that should only happen in very rare cases. For strings,
+// ints and other basic types you can ignore the return value.
+// This is a low-level function, consider using LogMsg instead.
 func (ctx *Plog) Log(key string, value interface{}) error {
 	if ctx == nil {
 		return nil
@@ -149,7 +152,7 @@ func (ctx *Plog) Log(key string, value interface{}) error {
 	return nil
 }
 
-// Log value as if it was a string.
+// LogAsString logs value as if it was a string.
 func (ctx *Plog) LogAsString(key string, value []byte) {
 	// Could possibly optimize this later.
 	err := ctx.Log(key, string(value))
@@ -158,9 +161,10 @@ func (ctx *Plog) LogAsString(key string, value []byte) {
 	}
 }
 
-// Log a JSON dictionary from the variadic arguments, which are parsed with
-// slog.KVsMap.  Note that the first argument is not part of the dictionary,
-// it's the message key.
+// LogDict logs a JSON dictionary from the variadic arguments, which are parsed
+// with slog.KVsMap.  Note that the first argument is not part of the
+// dictionary, it's the message key.
+// Deprecated in favor of LogMsg.
 // Might return errors from json.Marshal.
 func (ctx *Plog) LogDict(key string, kvs ...interface{}) error {
 	if ctx == nil {
@@ -169,8 +173,8 @@ func (ctx *Plog) LogDict(key string, kvs ...interface{}) error {
 	return ctx.Log(key, slog.KVsMap(kvs...))
 }
 
-// Log a human readable message with a JSON dictionary from the variadic
-// arguments, which are parsed with slog.KVsMap.
+// LogMsg logs a human readable message with a JSON dictionary from the
+// variadic arguments, which are parsed with slog.KVsMap.
 // This function does not return errors. If json encoding fails it
 // converts to a string and tries again, adding a "log-error" key.
 func (ctx *Plog) LogMsg(key, msg string, kvs ...interface{}) {
@@ -182,8 +186,8 @@ func (ctx *Plog) LogMsg(key, msg string, kvs ...interface{}) {
 	errWrap(ctx.Log, key, m)
 }
 
-// Log raw JSON encoded data in value. You must make sure the JSON is valid,
-// or the context will be aborted.
+// LogJSON logs raw JSON encoded data in value. You must make sure the JSON is
+// valid, or the context will be aborted.
 func (ctx *Plog) LogJSON(key string, value []byte) {
 	if ctx == nil {
 		return
@@ -279,42 +283,43 @@ func (r *refconn) retain() (*refconn, uint64) {
 	return r, r.generation
 }
 
-func (c *refconn) release() {
-	refs := atomic.AddUint64(&c.refs, ^uint64(0))
+func (r *refconn) release() {
+	refs := atomic.AddUint64(&r.refs, ^uint64(0))
 	if refs == 0 {
-		c.Close()
+		r.Close()
 	}
 }
 
 // Lock and reconnect, increasing generation.
-func (c *refconn) reconnect() {
-	gen := c.generation
-	c.Lock()
-	if gen == c.generation {
+func (r *refconn) reconnect() {
+	gen := r.generation
+	r.Lock()
+	if gen == r.generation {
 		var err error
-		wasnil := c.Writer == nil
-		c.Writer, err = c.dial(os.Getenv("PLOG_SOCKET"))
+		wasnil := r.Writer == nil
+		r.Writer, err = r.dial(os.Getenv("PLOG_SOCKET"))
 		if err != nil {
 			// Errors are silently ignored here. Typically ENOFILE.
-			c.Writer = nil
+			r.Writer = nil
 		}
-		if c.Writer != nil || !wasnil {
-			atomic.AddUint64(&c.generation, 1)
+		if r.Writer != nil || !wasnil {
+			atomic.AddUint64(&r.generation, 1)
 		}
 	}
-	c.Unlock()
+	r.Unlock()
 }
 
-// Messages sent to the channel created by NewTestLogContext
-// Value will be json encoded data.
+// TestMessage is used for messages sent to the channel created by
+// NewTestLogContext. Value will be json encoded data.
 type TestMessage struct {
 	CtxId uint64
 	Key   string
 	Value []byte
 }
 
-// Create a custom root log context connected to the channel, for testing.
-// Only messages are sent on the channel, not open or close.
+// NewTestLogContext creates a custom root log context connected to the
+// channel, for testing.  Only messages are sent on the channel, not open or
+// close.
 // Close the context and then wait for the channel to close for proper cleanup.
 func NewTestLogContext(ctx context.Context, key ...string) (*Plog, <-chan TestMessage) {
 	pctx := &Plog{}
@@ -353,7 +358,7 @@ func NewTestLogContext(ctx context.Context, key ...string) (*Plog, <-chan TestMe
 	pctx.conn = &refconn{
 		refs: 1,
 		dial: func(sock string) (*plogproto.Writer, error) {
-			return nil, fmt.Errorf("Can't reconnect.")
+			return nil, fmt.Errorf("can't reconnect")
 		},
 	}
 	pctx.conn.Writer = plogproto.NewWriter(w, false)

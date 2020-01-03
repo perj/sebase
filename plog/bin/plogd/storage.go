@@ -33,6 +33,7 @@ type storageMessage struct {
 	startTimestamp time.Time
 }
 
+// Storage represents the stored data for a single client program.
 type Storage struct {
 	Prog            string
 	State           map[string]interface{}
@@ -46,6 +47,7 @@ func progCtx(prog string) context.Context {
 	return plogd.ContextWithProg(context.Background(), prog)
 }
 
+// DataStorage contains the full set of data stored.
 type DataStorage struct {
 	lock      sync.Mutex
 	ProgStore map[string]*Storage
@@ -71,11 +73,11 @@ type storageSession struct {
 	isState bool
 }
 
-var sm_pool = make(chan chan storageMessage, 256)
+var smPool = make(chan chan storageMessage, 256)
 
 func newStorageSession(ck string, isState bool) *storageSession {
 	select {
-	case ch := <-sm_pool:
+	case ch := <-smPool:
 		return &storageSession{ch, 1, ck, isState}
 	default:
 		return &storageSession{make(chan storageMessage, 256), 1, ck, isState}
@@ -95,7 +97,7 @@ func releaseStorageSession(sess *storageSession) {
 
 func reclaimSessionChannel(ch chan storageMessage) {
 	select {
-	case sm_pool <- ch:
+	case smPool <- ch:
 	default:
 	}
 }
@@ -151,10 +153,11 @@ func dictStoreHandler(sess *dictSession) {
 	releaseStorageSession(sess.parentSession)
 }
 
-func (parent *storageSession) OpenDict(key string) (SessionOutput, error) {
+// OpenDict creates a new dictionary storage session.
+func (sess *storageSession) OpenDict(key string) (SessionOutput, error) {
 	ret := &dictSession{}
-	ret.storageSession = *newStorageSession(parent.confKey+"."+key, parent.isState)
-	ret.parentSession, _ = retainStorageSession(parent)
+	ret.storageSession = *newStorageSession(sess.confKey+"."+key, sess.isState)
+	ret.parentSession, _ = retainStorageSession(sess)
 	ret.startTimestamp = time.Now()
 	ret.key = key
 	ret.dict = make(map[string]interface{})
@@ -187,10 +190,11 @@ func listStoreHandler(sess *listSession) {
 	releaseStorageSession(sess.parentSession)
 }
 
-func (parent *storageSession) OpenList(key string) (SessionOutput, error) {
+// OpenList creates a new list storage session.
+func (sess *storageSession) OpenList(key string) (SessionOutput, error) {
 	ret := &listSession{}
-	ret.storageSession = *newStorageSession(parent.confKey+"."+key, parent.isState)
-	ret.parentSession, _ = retainStorageSession(parent)
+	ret.storageSession = *newStorageSession(sess.confKey+"."+key, sess.isState)
+	ret.parentSession, _ = retainStorageSession(sess)
 	ret.startTimestamp = time.Now()
 	ret.key = key
 	ret.list = make([]interface{}, 0, 10)
@@ -418,12 +422,15 @@ func (store *DataStorage) findOutput(prog string, stype plogproto.CtxType) (Sess
 }
 
 var (
-	ErrorProgNotFound              = errors.New("Program was not found")
+	// ErrorProgNotFound is used when the requested prog is not in use.
+	ErrorProgNotFound = errors.New("Program was not found")
+	// ErrorTooManyConcurrentRequests is used when buffers are full.
 	ErrorTooManyConcurrentRequests = errors.New("Too many concurrent requests")
 )
 
-// Returns true if prog exists and the callback was queued. The callback will be called.
-// Returns false if the callback will not be called, err will be one of:
+// CallbackState returns true if prog exists and the callback was queued. The
+// callback will be called.  Returns false if the callback will not be called,
+// err will be one of:
 // ErrorProgNotFound, ErrorTooManyConcurrentRequests
 func (store *DataStorage) CallbackState(prog string, cb func(map[string]interface{})) (bool, error) {
 	store.lock.Lock()
@@ -443,6 +450,7 @@ func (store *DataStorage) CallbackState(prog string, cb func(map[string]interfac
 	}
 }
 
+// Close waits for all sessions to close.
 func (store *DataStorage) Close() error {
 	store.ProgGroup.Wait()
 	return nil

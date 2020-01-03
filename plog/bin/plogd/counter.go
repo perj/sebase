@@ -2,11 +2,13 @@
 
 package main
 
+// CountOutput wraps a SessionOutput with a delta counter.
 type CountOutput struct {
 	SessionOutput
 	counts map[string]int
 }
 
+// NewCountOutput wraps a session output as a count output.
 func NewCountOutput(wrapped SessionOutput) *CountOutput {
 	return &CountOutput{SessionOutput: wrapped}
 }
@@ -34,6 +36,8 @@ func (out *CountOutput) Write(key string, value interface{}) error {
 	return out.SessionOutput.Write(key, value)
 }
 
+// Close undoes all deltas in the countoutut and closes the underlying session
+// output.
 func (out *CountOutput) Close(proper, lastRef bool) {
 	for k, f := range out.counts {
 		out.SessionOutput.Write(k, -f)

@@ -31,7 +31,7 @@ func handleOpenContext(sessionStore *SessionStorage, dataStore *DataStorage, par
 	var err error
 	var stype plogproto.CtxType
 	if len(info.Key) == 0 {
-		return nil, fmt.Errorf("No context key given.")
+		return nil, fmt.Errorf("no context key given")
 	}
 	if info.Ctxtype == nil {
 		info.Ctxtype = new(plogproto.CtxType)
@@ -39,7 +39,7 @@ func handleOpenContext(sessionStore *SessionStorage, dataStore *DataStorage, par
 	switch *info.Ctxtype {
 	case plogproto.CtxType_log, plogproto.CtxType_state, plogproto.CtxType_count:
 		if parentSess != nil {
-			return nil, fmt.Errorf("Parent context id not allowed for this context type.")
+			return nil, fmt.Errorf("parent context id not allowed for this context type")
 		}
 		output, err = dataStore.findOutput(info.Key[0], *info.Ctxtype)
 		stype = *info.Ctxtype
@@ -54,7 +54,7 @@ func handleOpenContext(sessionStore *SessionStorage, dataStore *DataStorage, par
 		}
 	case plogproto.CtxType_dict, plogproto.CtxType_list:
 		if parentSess == nil {
-			return nil, fmt.Errorf("Parent context id is required for this context type.")
+			return nil, fmt.Errorf("parent context id is required for this context type")
 		}
 		switch *info.Ctxtype {
 		case plogproto.CtxType_list:
@@ -166,7 +166,7 @@ func handleConnection(ctx context.Context, sessionStore *SessionStorage, dataSto
 	}
 }
 
-var Work sync.WaitGroup
+var work sync.WaitGroup
 var sigCh = make(chan os.Signal)
 var quitDoneCh = make(chan struct{})
 
@@ -181,10 +181,10 @@ func listen(ctx context.Context, sessionStore *SessionStorage, dataStore *DataSt
 			break
 		}
 
-		Work.Add(1)
+		work.Add(1)
 		go func() {
 			handleConnection(ctx, sessionStore, dataStore, conn)
-			Work.Done()
+			work.Done()
 		}()
 	}
 }
@@ -237,10 +237,6 @@ func main() {
 	pidfile := flag.String("pidfile", "", "Write PID to this file. Truncated early but the pid is written once the service is ready to accept answers")
 	subprog := flag.String("subprog", "", "If set, split the prog field on + and add the second value to the output with this key.")
 
-	if os.Getenv("GOMAXPROCS") == "" && strings.HasPrefix(runtime.Version(), "go1.4") {
-		runtime.GOMAXPROCS(20)
-	}
-
 	flag.Parse()
 
 	var pidF *os.File
@@ -264,17 +260,17 @@ func main() {
 	switch {
 	case *logstashAddr != "":
 		if *outPlugin != "" || *jsonFile != "" {
-			err = fmt.Errorf("Only one of -json, -file and -output-plugin can be used.")
+			err = fmt.Errorf("only one of -json, -file and -output-plugin can be used")
 			break
 		}
 		dataStore.Output, err = NewNetWriter("tcp", *logstashAddr)
 	case *jsonFile != "":
 		if *outPlugin != "" {
-			err = fmt.Errorf("Only one of -json, -file and -output-plugin can be used.")
+			err = fmt.Errorf("only one of -json, -file and -output-plugin can be used")
 			break
 		}
 		var w *jsonFileWriter
-		w, err = NewJsonFileWriter(*jsonFile)
+		w, err = newJSONFileWriter(*jsonFile)
 		if err != nil {
 			break
 		}
@@ -355,7 +351,7 @@ func main() {
 	cancel()
 
 	graceful := make(chan struct{})
-	go func() { Work.Wait(); close(graceful) }()
+	go func() { work.Wait(); close(graceful) }()
 	select {
 	case <-graceful:
 	case <-time.After(5 * time.Second):

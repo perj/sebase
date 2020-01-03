@@ -1,3 +1,5 @@
+// Copyright 2020 Schibsted
+
 package plog
 
 import (
@@ -8,9 +10,11 @@ import (
 	"github.com/schibsted/sebase/util/pkg/slog"
 )
 
+// Fields is now just an alias for slog.KV. It's used to add key-value pairs to
+// logs.
 type Fields = slog.KV
 
-// Type TypeLogger can be used to log with preset fields. Additional
+// TypeLogger can be used to log with preset fields. Additional
 // Fields can also be added via the With method or passed together
 // with a message to LogMsg.
 //
@@ -35,7 +39,7 @@ type TypeLogger interface {
 	Panicf(format string, value ...interface{})
 }
 
-// Type Logger is an interface with functions for level based logging. Plog
+// Logger is an interface with functions for level based logging. Plog
 // context conform to this interface, as well as the WithFields return value.
 // See the Plog type for documentation about the functions in this interface.
 //

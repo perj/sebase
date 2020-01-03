@@ -17,18 +17,18 @@ import (
 //go:generate protoc --go_out=. plog.proto
 
 const (
-	// Default path to listen on / connect to.
+	// DefaultSock is the default path to listen on / connect to.
 	DefaultSock = "/run/plog/plog.sock"
 )
 
-// A convenience listener type. Set seqpacket to true in case that's
-// the socket type used.
+// Listener is a convenience listener type. Set seqpacket to true in case
+// that's the socket type used.
 type Listener struct {
 	net.Listener
 	Seqpacket bool
 }
 
-// Call Accept on the contained listener and wrap the returned connection.
+// Accept on the contained listener and wrap the returned connection.
 func (l Listener) Accept() (*Reader, error) {
 	c, err := l.Listener.Accept()
 	if err != nil {
@@ -37,8 +37,8 @@ func (l Listener) Accept() (*Reader, error) {
 	return NewReader(c, l.Seqpacket), nil
 }
 
-// Parses sock either as a URL or a path and opens a connection there.
-// If sock is empty string the DefaultSock value is used.
+// NewClientConn parses sock either as a URL or a path and opens a connection
+// there.  If sock is empty string the DefaultSock value is used.
 // The underlying WriteCloser can be cast to net.Conn if necessary.
 func NewClientConn(sock string) (*Writer, error) {
 	surl, err := url.Parse(sock)
@@ -67,19 +67,19 @@ func NewClientConn(sock string) (*Writer, error) {
 	return NewWriter(conn, surl.Scheme == "unixpacket"), err
 }
 
-// Type for receiving plog messages. Has Closer for easier use.
+// Reader for receiving plog messages. Has Closer for easier use.
 type Reader struct {
 	br *bufio.Reader
 	io.Closer
 	Seqpacket bool
 }
 
-// Creates a new reader for plog messages.
+// NewReader creates a new reader for plog messages.
 func NewReader(rc io.ReadCloser, seqpacket bool) *Reader {
 	return &Reader{bufio.NewReader(rc), rc, seqpacket}
 }
 
-// Overwrite *msg with a message received from the connection.
+// Receive overwrites *msg with a message received from the connection.
 func (r *Reader) Receive(msg *Plog) error {
 	var l uint32
 	if err := binary.Read(r.br, binary.BigEndian, &l); err != nil {
@@ -93,7 +93,7 @@ func (r *Reader) Receive(msg *Plog) error {
 	return proto.Unmarshal(data, msg)
 }
 
-// Type for sending plog messages.
+// Writer for sending plog messages.
 // Has closer for easier use.
 type Writer struct {
 	bw *bufio.Writer
@@ -102,7 +102,7 @@ type Writer struct {
 	sync.Mutex
 }
 
-// Creates a new writer for plog messages.
+// NewWriter creates a new writer for plog messages.
 func NewWriter(wc io.WriteCloser, seqpacket bool) *Writer {
 	return &Writer{bw: bufio.NewWriter(wc), Closer: wc, Seqpacket: seqpacket}
 }
@@ -130,24 +130,24 @@ func (w *Writer) Send(msg *Plog) error {
 	return w.bw.Flush()
 }
 
-// Convenience wrapper for sending only the open message.
-func (w *Writer) SendOpen(ctxId uint64, msg *OpenContext) error {
-	return w.Send(&Plog{CtxId: &ctxId, Open: msg})
+// SendOpen is a convenience wrapper for sending only the open message.
+func (w *Writer) SendOpen(ctxID uint64, msg *OpenContext) error {
+	return w.Send(&Plog{CtxId: &ctxID, Open: msg})
 }
 
-// Convenienc wrapper for sending only the close message.
-func (w *Writer) SendClose(ctxId uint64) error {
+// SendClose is a convenience wrapper for sending only the close message.
+func (w *Writer) SendClose(ctxID uint64) error {
 	cl := true
-	return w.Send(&Plog{CtxId: &ctxId, Close: &cl})
+	return w.Send(&Plog{CtxId: &ctxID, Close: &cl})
 }
 
-// Convenience wrapper for sending only message messages.
-func (w *Writer) SendMessage(ctxId uint64, msg ...*PlogMessage) error {
-	return w.Send(&Plog{CtxId: &ctxId, Msg: msg})
+// SendMessage is a convenience wrapper for sending only message messages.
+func (w *Writer) SendMessage(ctxID uint64, msg ...*PlogMessage) error {
+	return w.Send(&Plog{CtxId: &ctxID, Msg: msg})
 }
 
-// Convenience wrapper for sending a single message.
-func (w *Writer) SendKeyValue(ctxId uint64, key string, value []byte) error {
+// SendKeyValue is a convenience wrapper for sending a single message.
+func (w *Writer) SendKeyValue(ctxID uint64, key string, value []byte) error {
 	msg := PlogMessage{Key: &key, Value: value}
-	return w.SendMessage(ctxId, &msg)
+	return w.SendMessage(ctxID, &msg)
 }

@@ -1,3 +1,5 @@
+// Copyright 2020 Schibsted
+
 package plog
 
 import (
@@ -9,25 +11,28 @@ import (
 	"time"
 )
 
-// Where logs go if we can't connect to plogd. Defaults to stderr.
+// FallbackWriter is where logs go if we can't connect to plogd. Defaults to stderr.
 var FallbackWriter io.Writer = os.Stderr
 
-// Formatter for fallback writes. Can be overwritten to customize output.
-// All values are json encoded. The key is constructed recursively
-// with parent contexts prefixed, if any.
+// FallbackFormatter used for fallback writes. Can be overwritten to customize
+// output. All values are json encoded. The key is constructed recursively with
+// parent contexts prefixed, if any.
 // Setup will change the default value to FallbackFormatterSimple if it
-// detects that FallbackWriter is a tty when it's called.
+// detects that FallbackWriter is a tty when it's called. The default format
+// might change without a major package version bump, set this manually if you
+// depend on it.
 var FallbackFormatter func(key []FallbackKey, value []byte) (n int, err error) = FallbackFormatterJsonWrap
 
-// Key argument to the formatter. The slice passed to the functions has
-// one element per nested context level, followed by the key passed to
-// the log funtion.
+// FallbackKey used for key argument to the formatter. The slice passed to the
+// functions has one element per nested context level, followed by the key
+// passed to the log funtion.
 type FallbackKey struct {
 	Key   string
 	CtxId uint64
 }
 
-// Logs will be written prefixed with key and suffixed with a newline.
+// FallbackFormatterSimple creates logs thath will be written prefixed with
+// key and suffixed with a newline.
 // After FallbackFormatKey the key is joined with dots (.). The key
 // is then printed with a colon and the json encoded value after.
 func FallbackFormatterSimple(key []FallbackKey, value []byte) (n int, err error) {
@@ -47,7 +52,8 @@ func FallbackFormatterSimple(key []FallbackKey, value []byte) (n int, err error)
 	return
 }
 
-// Logs will be written as JSON objects with key, message and @timestamp fields.
+// FallbackFormatterJsonWrap creates logs that will be written as JSON objects
+// with key, message and @timestamp fields.
 // The last entry in key is logged as "type" instead.
 func FallbackFormatterJsonWrap(key []FallbackKey, value []byte) (n int, err error) {
 	var v = struct {

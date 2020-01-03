@@ -33,9 +33,9 @@ func (w *testWriter) WriteHeader(code int) {
 func TestServerQuery(t *testing.T) {
 	sconn := testConnect()
 	defer sconn.Close()
-	sId := hello(t, sconn, plogproto.CtxType_state, 0, "teststate")
+	sID := hello(t, sconn, plogproto.CtxType_state, 0, "teststate")
 	dataStore.testStatePing = make(chan struct{})
-	sconn.SendKeyValue(sId, "test", []byte(`"fest"`))
+	sconn.SendKeyValue(sID, "test", []byte(`"fest"`))
 	<-dataStore.testStatePing
 	dataStore.testStatePing = nil
 
@@ -56,7 +56,7 @@ func TestServerQuery(t *testing.T) {
 		t.Errorf("Expected %v, got %v, code %v", `{"value":"fest"}`, w.Buffer.String(), w.code)
 	}
 
-	goodbye(t, sconn, sId)
+	goodbye(t, sconn, sID)
 	checkLog(t, "teststate", "state", `{"test":"fest"}`)
 
 	w.Buffer.Reset()
