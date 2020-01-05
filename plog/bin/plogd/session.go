@@ -9,6 +9,7 @@ import (
 	"github.com/schibsted/sebase/plog/internal/pkg/plogproto"
 )
 
+// SessionOutput is the connection between session and storage.
 type SessionOutput interface {
 	OpenDict(key string) (SessionOutput, error)
 	OpenList(key string) (SessionOutput, error)
@@ -17,6 +18,7 @@ type SessionOutput interface {
 	ConfKey() string
 }
 
+// Session represents a session opened by a client.
 type Session struct {
 	store          *SessionStorage
 	SessionType    plogproto.CtxType
@@ -24,6 +26,8 @@ type Session struct {
 	StartTimestamp time.Time
 }
 
+// Close removes the session. If proper is false a dignostic might be added to
+// it first.
 func (sess *Session) Close(proper bool) {
 	sess.store.lock.Lock()
 	lastRef := false
@@ -40,6 +44,7 @@ func (sess *Session) Close(proper bool) {
 	sess.Writer.Close(proper, lastRef)
 }
 
+// SessionStorage manages sessions.
 type SessionStorage struct {
 	lock      sync.Mutex
 	CountRefs map[string]int

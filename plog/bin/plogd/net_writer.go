@@ -23,10 +23,11 @@ const (
 	shutdown          = iota
 )
 
+// NetWriter is used to send logs over the network.
 type NetWriter struct {
 	network, address string
 	Conn             net.Conn
-	LocalIp          string
+	LocalIP          string
 	bytes.Buffer
 	signal chan netmsg
 	data   chan []byte
@@ -43,6 +44,9 @@ func (wr *NetWriter) eofReader() {
 	wr.signal <- disconnect
 }
 
+// Connect tries to connect and starts the thread writing the buffer if
+// successful.  It will return nil on connection refused even though no
+// connection is established.
 func (wr *NetWriter) Connect() error {
 	var err error
 	wr.Conn, err = net.Dial(wr.network, wr.address)
@@ -63,7 +67,7 @@ func (wr *NetWriter) Connect() error {
 		return err
 	}
 	if wr.Conn != nil {
-		wr.LocalIp = wr.Conn.LocalAddr().(*net.TCPAddr).IP.String()
+		wr.LocalIP = wr.Conn.LocalAddr().(*net.TCPAddr).IP.String()
 		go wr.eofReader()
 	}
 	return nil
@@ -120,6 +124,9 @@ func netWriterLoop(wr *NetWriter) {
 	}
 }
 
+// NewNetWriter creates a writer for the given address.
+// It will try to connect but connection refused is ignored, while other errors
+// are reported.
 func NewNetWriter(network, address string) (*NetWriter, error) {
 	wr := &NetWriter{network: network, address: address, signal: make(chan netmsg, 1), data: make(chan []byte, 1024)}
 	// Do the first connect here to detect more serious problems
@@ -131,15 +138,18 @@ func NewNetWriter(network, address string) (*NetWriter, error) {
 	return wr, nil
 }
 
+// Close signals the writer to close. It's asynchronous.
 func (wr *NetWriter) Close() error {
 	wr.signal <- shutdown
 	return nil
 }
 
+// WriteMessage implements the storage output interface. It queues the message
+// in the output buffer.
 func (wr *NetWriter) WriteMessage(ctx context.Context, msg plogd.LogMessage) {
 	// msg.Host will be empty string here, add it.
 	if msg.Host == "" {
-		msg.Host = wr.LocalIp
+		msg.Host = wr.LocalIP
 	}
 	body, err := msg.MarshalJSON()
 	if err != nil {
@@ -149,6 +159,7 @@ func (wr *NetWriter) WriteMessage(ctx context.Context, msg plogd.LogMessage) {
 	wr.data <- body
 }
 
+// ResetBuffer replaces the output buffer, returning the previous contents.
 func (wr *NetWriter) ResetBuffer(newbuf []byte) []byte {
 	wr.Mutex.Lock()
 	ret := wr.Buffer.Bytes()

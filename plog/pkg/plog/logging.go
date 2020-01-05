@@ -1,8 +1,9 @@
-// Copyright 2018 Schibsted
+// Copyright 2020 Schibsted
 
-// Package for logging and sending logs to a log server, where they'll be
-// aggregated into log objects and kept safe even if the client program exists
-// or crashes.
+// Package plog is used for logging and sending logs to a log server, where
+// they'll be aggregated into log objects and kept safe even if the client
+// program exists or crashes. Can also be used without the server in which
+// case a fallback writer is used instead.
 //
 // The LogMsg class of functions are the latest and most useful ones.
 // You can either use the package level LogMsg with any key you wish
@@ -27,10 +28,11 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
-// Threshold for logging, only this and higher prio levels will log.
+// SetupLevel is the threshold for logging, only this and higher prio levels
+// will be logged. Modified by Setup.
 var SetupLevel = Info
 
-// Initializes the default plog context and changes SetupLevel based on a
+// Setup initializes the default plog context and changes SetupLevel based on a
 // string. Changes the functions used by the slog package to plog and also
 // calls log.SetOutput(plog.Info) to redirect log.Printf output to this
 // package, as well as log.SetFlags(0). Finally checks if FallbackWriter is a
@@ -56,13 +58,13 @@ func Setup(appname, lvl string) {
 	slog.Debug = Debug.LogMsg
 }
 
-// Closes Default, disconnecting from the logging server.
+// Shutdown closes Default, properly disconnecting from the logging server.
 func Shutdown() {
 	Default.Close()
 	Default = nil
 }
 
-// Logs to Default if not nil, or to FallbackWriter if Default is nil.
+// Log logs to Default if not nil, or to FallbackWriter if Default is nil.
 func Log(key string, value interface{}) error {
 	if Default != nil {
 		return Default.Log(key, value)
@@ -75,15 +77,16 @@ func Log(key string, value interface{}) error {
 	return err
 }
 
-// Log a JSON dictionary from the variadic arguments, which are parsed with
-// slog.KVsMap. Logs to Default or to FallbackWriter if nil.
-// See Plog.LogDict for more information.
+// LogDict logs a JSON dictionary from the variadic arguments, which are parsed
+// with slog.KVsMap. Logs to Default or to FallbackWriter if nil.
+// Deprecated in favor of LogMsg.
 func LogDict(key string, kvs ...interface{}) error {
 	return Log(key, slog.KVsMap(kvs...))
 }
 
-// Log a message together with a JSON dictionary from the variadic arguments,
-// which are parse by slog.KVsMap. Logs to Default or to FallbackWriter if nil.
+// LogMsg logs a message together with a JSON dictionary from the variadic
+// arguments, which are parsed by slog.KVsMap. Logs to Default or to
+// FallbackWriter if Default is nil.
 // See Plog.LogMsg for more information.
 func LogMsg(key, msg string, kvs ...interface{}) {
 	m := slog.KVsMap(kvs...)
@@ -113,12 +116,12 @@ func errWrap(f func(key string, value interface{}) error, key string, value inte
 	}
 }
 
-// Shorthand for Info.Print
+// Print is shorthand for Info.Print
 func Print(value ...interface{}) {
 	Info.Print(value...)
 }
 
-// Shorthand for Info.Printf
+// Printf is shorthand for Info.Printf
 func Printf(fmt string, value ...interface{}) {
 	Info.Printf(fmt, value...)
 }

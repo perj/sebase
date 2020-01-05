@@ -78,7 +78,7 @@ type jsonFileWriter struct {
 	sync.Mutex
 }
 
-func NewJsonFileWriter(file string) (*jsonFileWriter, error) {
+func newJSONFileWriter(file string) (*jsonFileWriter, error) {
 	w := &jsonFileWriter{path: file}
 	err := w.rotate()
 	if err != nil {

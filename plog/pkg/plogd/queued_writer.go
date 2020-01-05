@@ -103,6 +103,6 @@ func (qw *queuedWriter) Close() error {
 	case err := <-qw.done:
 		return err
 	case <-time.After(5 * time.Second):
-		return fmt.Errorf("Timed out waiting for writer to close. Possible data loss.")
+		return fmt.Errorf("timed out waiting for writer to close, possible data loss")
 	}
 }
