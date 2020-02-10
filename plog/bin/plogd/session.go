@@ -12,7 +12,7 @@ import (
 // SessionOutput is the connection between session and storage.
 type SessionOutput interface {
 	OpenDict(key string) (SessionOutput, error)
-	OpenList(key string) (SessionOutput, error)
+	OpenList(key string, dicts bool) (SessionOutput, error)
 	Write(key string, value interface{}) error
 	Close(proper, lastRef bool)
 	ConfKey() string

@@ -52,15 +52,17 @@ func handleOpenContext(sessionStore *SessionStorage, dataStore *DataStorage, par
 				output = noutput
 			}
 		}
-	case plogproto.CtxType_dict, plogproto.CtxType_list:
+	case plogproto.CtxType_dict, plogproto.CtxType_list, plogproto.CtxType_list_of_dicts:
 		if parentSess == nil {
 			return nil, fmt.Errorf("parent context id is required for this context type")
 		}
 		switch *info.Ctxtype {
 		case plogproto.CtxType_list:
-			output, err = parentSess.Writer.OpenList(info.Key[0])
+			output, err = parentSess.Writer.OpenList(info.Key[0], false)
 		case plogproto.CtxType_dict:
 			output, err = parentSess.Writer.OpenDict(info.Key[0])
+		case plogproto.CtxType_list_of_dicts:
+			output, err = parentSess.Writer.OpenList(info.Key[0], true)
 		}
 		stype = parentSess.SessionType
 	}

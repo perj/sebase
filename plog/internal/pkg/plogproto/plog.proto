@@ -14,6 +14,7 @@ enum CtxType {
 	count = 2;
 	dict = 3;
 	list = 4;
+	list_of_dicts = 5;
 }
 
 message plog {
