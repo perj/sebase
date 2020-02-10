@@ -58,10 +58,6 @@ type Sapp struct {
 	healthCheckEndpoint string
 	healthCheckClient   *http.Client
 
-	// If true all HTTP requests will be logged. If false only requests that
-	// failed will be logged.
-	logAllHttpRequests bool
-
 	sdCtl            chan sdCtl
 	sdClosed         chan struct{}
 	shutdownComplete chan struct{}
@@ -83,16 +79,7 @@ func (s *Sapp) DefaultServer() *http.Server {
 	srv := &http.Server{TLSConfig: s.TlsConf}
 	handler := s.AclMiddleware(srv.Handler)
 
-	errorLogger := func(m map[string]interface{}) {
-		plog.Log("http_request", m)
-	}
-
-	infoLogger := func(_ map[string]interface{}) {}
-	if s.logAllHttpRequests {
-		infoLogger = errorLogger
-	}
-
-	handler = loghttp.LogMiddleware(handler, infoLogger, errorLogger)
+	handler = loghttp.LogMiddleware(handler, nil, nil)
 	srv.Handler = handler
 	return srv
 }
@@ -229,7 +216,6 @@ func (s *Sapp) Init(app ...string) error {
 	if *s.logLevel == "" {
 		*s.logLevel = s.Bconf.Get("loglevel").String("info")
 	}
-	s.logAllHttpRequests = s.Bconf.Get("log_all_http_requests").Bool(true)
 
 	appl := strings.Join(app, "+")
 	s.app = strings.Join(app, "/")

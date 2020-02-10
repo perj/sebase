@@ -9,14 +9,28 @@
 // You can either use the package level LogMsg with any key you wish
 // or use e.g. plog.Info.LogMsg for a standard "INFO" key.
 //
+// A Setup function is provided to apply this package to the standard
+// log interface and also to the other sebase packages. It's recommended
+// to call Setup if you use this package.
+//
 // For advanced usage recursive plog contexts can be opened. They then
 // log a JSON object once all the contexts under the root are closed.
 // If plogd is running it will detect if a context was not closed
 // properly and log an "@interrupted" key which might be useful to find
 // which request caused an error.
 //
-// Various compatibility functions also exist, for example there are
-// Print and Printf package level functions.
+// Context based logging is done either via the package level Ctx function or
+// Level.Ctx. Info logging is thus likely plog.Info.Ctx(ctx).LogMsg or
+// plog.Info.CtxMsg as a shortcut.  These apply filters that can be stored in
+// the context via slog.ContextWithFilter.
+//
+// You can also store a plog context or another logger
+// function using plog.ContextWithLogger. Those can also be used to apply
+// context to the logs. If a plog context is used it can be retrieved using
+// CtxPlog.
+//
+// Various compatibility and shortcut functions also exist, for example there
+// are Print and Printf package level functions.
 package plog
 
 import (
@@ -65,6 +79,10 @@ func Shutdown() {
 }
 
 // Log logs to Default if not nil, or to FallbackWriter if Default is nil.
+// Might return errors from json.Marshal, if it fails to encode the value
+// given.
+// This is a low level function, you likely want to use Level.LogMsg instead,
+// or the package level LogMsg if you wish to customize the key.
 func Log(key string, value interface{}) error {
 	if Default != nil {
 		return Default.Log(key, value)
@@ -87,7 +105,8 @@ func LogDict(key string, kvs ...interface{}) error {
 // LogMsg logs a message together with a JSON dictionary from the variadic
 // arguments, which are parsed by slog.KVsMap. Logs to Default or to
 // FallbackWriter if Default is nil.
-// See Plog.LogMsg for more information.
+// This function does not return errors. If json encoding fails it
+// converts to a string and tries again, adding a "log-error" key.
 func LogMsg(key, msg string, kvs ...interface{}) {
 	m := slog.KVsMap(kvs...)
 	m["msg"] = msg

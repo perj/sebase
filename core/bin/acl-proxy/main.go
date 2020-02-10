@@ -23,7 +23,6 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"encoding/pem"
 	"flag"
 	"fmt"
@@ -42,6 +41,7 @@ import (
 
 	"github.com/schibsted/sebase/core/pkg/acl"
 	"github.com/schibsted/sebase/core/pkg/loghttp"
+	"github.com/schibsted/sebase/plog/pkg/plog"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -53,11 +53,13 @@ type Proxy struct {
 
 func (p *Proxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if p.Acl.CheckRequest(req) {
+		plog.Info.CtxMsg(req.Context(), "Forwarding request", "url", req.URL.String())
 		if req.URL.Path == "/stop" {
 			p.Server.Shutdown(context.Background())
 		}
 		p.Handler.ServeHTTP(rw, req)
 	} else {
+		plog.Info.CtxMsg(req.Context(), "Forbidden by ACL", "url", req.URL.String())
 		http.Error(rw, "Forbidden by ACL", http.StatusForbidden)
 	}
 }
@@ -107,6 +109,8 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
+
+	plog.Setup("acl-proxy", "info")
 
 	if *minExitEarly < 0 {
 		log.Fatal("-min-exit-early is negative")
@@ -164,19 +168,8 @@ func main() {
 			RootCAs:      clCA,
 		},
 	}
-	createLogFunc := func(prefix string) func(m map[string]interface{}) {
-		f := func(m map[string]interface{}) {
-			b, err := json.Marshal(m)
-			if err != nil {
-				log.Printf("error: Failed to marshal log record: %s", err)
-			} else {
-				log.Printf("%s: %s", prefix, string(b))
-			}
-		}
-		return f
-	}
 	proxy := Proxy{
-		Handler: loghttp.LogMiddleware(h, createLogFunc("info"), createLogFunc("error")),
+		Handler: h,
 		Acl:     accessList,
 	}
 
@@ -196,7 +189,7 @@ func main() {
 	defer l.Close()
 
 	proxy.Server = &http.Server{
-		Handler: &proxy,
+		Handler: loghttp.LogMiddleware(&proxy, nil, nil),
 	}
 	stopCh := make(chan struct{})
 	if *insecure {
@@ -228,6 +221,11 @@ func main() {
 
 	runUntil = SubExitEarly(runUntil, *minExitEarly, *maxExitEarly)
 
+	if runUntil.IsZero() {
+		log.Printf("No certificats, will run until stopped.")
+		<-stopCh
+		return
+	}
 	log.Printf("Will run until %v", runUntil)
 	select {
 	case <-time.After(runUntil.Sub(time.Now())):
@@ -253,6 +251,9 @@ func SubExitEarly(t time.Time, min, max time.Duration) time.Time {
 }
 
 func LoadCert(certFile string, na time.Time) (certs []tls.Certificate, notAfter time.Time) {
+	if certFile == "/dev/null" {
+		return nil, na
+	}
 	cert, err := tls.LoadX509KeyPair(certFile, certFile)
 	if err != nil {
 		log.Fatal(err)

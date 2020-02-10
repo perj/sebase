@@ -34,6 +34,7 @@ COMPONENT([
 	util/lib
 	util/pkg/keyid
 	util/pkg/sbalance
+	util/pkg/slog
 	vendor/http_parser
 	vendor/sha
 	vendor/xxhash
