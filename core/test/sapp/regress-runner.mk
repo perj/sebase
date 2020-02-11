@@ -13,13 +13,10 @@ REGRESS_DEPEND=etcd-start
 REGRESS_DEPEND+=plogd-start regress-plog-writer-start
 REGRESS_DEPEND+=gencerts sapp-start
 
-REGRESS_TARGETS+=plog-redirect-sapp-test-server-log:http_request:100:$(subst /,--,${TDIR})--log
-REGRESS_TARGETS+=plog-redirect-sapp-test-server-log-all:http_request:100:$(subst /,--,${TDIR})--log-all
+REGRESS_TARGETS+=plog-redirect-sapp-test-server-log:http-in:100:$(subst /,--,${TDIR})--log
 REGRESS_TARGETS+=run-sapp-tests
-REGRESS_TARGETS+=plog-redirect-sapp-test-server-log:http_request:0:none
-REGRESS_TARGETS+=plog-redirect-sapp-test-server-log-all:http_request:0:none
+REGRESS_TARGETS+=plog-redirect-sapp-test-server-log:http-in:0:none
 REGRESS_TARGETS+=check-log
-REGRESS_TARGETS+=check-log-all
 
 REGRESS_CLEANUP+=sapp-stop
 REGRESS_CLEANUP+=plogd-stop regress-plog-writer-stop
@@ -88,14 +85,12 @@ sapp-start:
 	PLOG_SOCKET=.plog.sock sd_start -- sapp-test-server -conf ${TDIR}/conf/default-acl.conf -etcd-url http://localhost:$$(cat .etcd-port) sapp-test-server-default-acl
 	PLOG_SOCKET=.plog.sock sd_start -- sapp-test-server -conf ${TDIR}/conf/custom-acl.conf -etcd-url http://localhost:$$(cat .etcd-port) sapp-test-server-custom-acl
 	PLOG_SOCKET=.plog.sock sd_start -- sapp-test-server -conf ${TDIR}/conf/log.conf -etcd-url http://localhost:$$(cat .etcd-port) sapp-test-server-log
-	PLOG_SOCKET=.plog.sock sd_start -- sapp-test-server -conf ${TDIR}/conf/log-all.conf -etcd-url http://localhost:$$(cat .etcd-port) sapp-test-server-log-all
 
 sapp-stop:
 	@echo -e "\\033[1;35mStopping sapp test server\\033[39;0m"
 	regress-stopper -etcd-url http://localhost:$$(cat .etcd-port) sapp-test-server-default-acl
 	regress-stopper -etcd-url http://localhost:$$(cat .etcd-port) sapp-test-server-custom-acl
 	regress-stopper -etcd-url http://localhost:$$(cat .etcd-port) sapp-test-server-log
-	regress-stopper -etcd-url http://localhost:$$(cat .etcd-port) sapp-test-server-log-all
 
 run-sapp-tests:
 	sapp-tests -etcd-url http://localhost:$$(cat .etcd-port) -conf ${TDIR}/conf/sapp-tests.conf

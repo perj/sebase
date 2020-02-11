@@ -3,8 +3,8 @@
 	"host": "{{.+}}",
 	"message": {
 		"cert_cn": "sapp-tests.foobar",
-		"duration_ms": {{.+}},
 		"host": "sapp-test-server-log.foobar:8080",
+		"log": [],
 		"method": "GET",
 		"panic": "panic!",
 		"proto": "HTTP/1.1",
@@ -12,15 +12,33 @@
 		"uri": "/panic"
 	},
 	"prog": "sapp-test-server-log",
-	"type": "http_request"
+	"start_timestamp": "{{[^"]+}}",
+	"type": "http-in"
 }
 {
 	"@timestamp": "{{[^"]+}}",
 	"host": "{{.+}}",
 	"message": {
 		"cert_cn": "sapp-tests.foobar",
-		"duration_ms": {{.+}},
 		"host": "sapp-test-server-log.foobar:8080",
+		"log": [],
+		"method": "GET",
+		"proto": "HTTP/1.1",
+		"response_size": 14,
+		"status": 200,
+		"uri": "/allow_get"
+	},
+	"prog": "sapp-test-server-log",
+	"start_timestamp": "{{[^"]+}}",
+	"type": "http-in"
+}
+{
+	"@timestamp": "{{[^"]+}}",
+	"host": "{{.+}}",
+	"message": {
+		"cert_cn": "sapp-tests.foobar",
+		"host": "sapp-test-server-log.foobar:8080",
+		"log": [],
 		"method": "GET",
 		"proto": "HTTP/1.1",
 		"response_body": "Forbidden by ACL\n",
@@ -29,5 +47,6 @@
 		"uri": "/forbidden"
 	},
 	"prog": "sapp-test-server-log",
-	"type": "http_request"
+	"start_timestamp": "{{[^"]+}}",
+	"type": "http-in"
 }

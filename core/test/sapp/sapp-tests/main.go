@@ -22,7 +22,6 @@ const dialDomain = "foobar"
 const bodyOk = "Hello, world!\n"
 const bodyDenied = "Forbidden by ACL\n"
 const getFailLog = "client.Do failed: Get https://sapp-test-server-log.foobar:8080/panic: EOF"
-const getFailLogAll = "client.Do failed: Get https://sapp-test-server-log-all.foobar:8080/panic: EOF"
 
 func main() {
 	app.Flags("", true)
@@ -54,10 +53,6 @@ func main() {
 		{"sapp-test-server-log", "GET", "/panic", -1, getFailLog},
 		{"sapp-test-server-log", "GET", "/allow_get", 200, bodyOk},
 		{"sapp-test-server-log", "GET", "/forbidden", 403, bodyDenied},
-		{"sapp-test-server-log-all", "GET", "/panic", -1, getFailLogAll},
-
-		{"sapp-test-server-log-all", "GET", "/allow_get", 200, bodyOk},
-		{"sapp-test-server-log-all", "GET", "/forbidden", 403, bodyDenied},
 	}
 	// Preallocate room for the service.
 	watch := make([]string, 0, 5)
