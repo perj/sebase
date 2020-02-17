@@ -7,7 +7,6 @@ INSTALL(regress/sapp/conf
 		sapp-tests.conf.in
 		invalid-cert.conf.in
 		log.conf.in
-		log-all.conf.in
 	]
 	conf[
 		custom-acl.conf
@@ -15,7 +14,6 @@ INSTALL(regress/sapp/conf
 		sapp-tests.conf
 		invalid-cert.conf
 		log.conf
-		log-all.conf
 		#ca.key.pem
 		#ca.cert.pem
 	]

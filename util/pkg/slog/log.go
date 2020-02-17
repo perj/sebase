@@ -96,10 +96,11 @@ type DefaultCtxLogger struct {
 	*Logger
 }
 
-// LogMsg calls the wrapped Logger, if not nil. It discards the ctx
-// parameter.
+// LogMsg calls the wrapped Logger, if not nil. kvs are passed through
+// any context filters set in ctx.
 func (d DefaultCtxLogger) LogMsg(ctx context.Context, msg string, kvs ...interface{}) {
 	if d.Logger != nil {
+		kvs = applyKVFilters(ctx, kvs)
 		(*d.Logger)(msg, kvs...)
 	}
 }

@@ -19,7 +19,7 @@ func (ct *countTester) OpenDict(key string) (SessionOutput, error) {
 	panic("N/A")
 }
 
-func (ct *countTester) OpenList(key string) (SessionOutput, error) {
+func (ct *countTester) OpenList(key string, dicts bool) (SessionOutput, error) {
 	panic("N/A")
 }
 

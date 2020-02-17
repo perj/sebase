@@ -173,6 +173,7 @@ type listSession struct {
 	startTimestamp time.Time
 	key            string
 	list           []interface{}
+	dicts          bool
 }
 
 func listStoreHandler(sess *listSession) {
@@ -181,7 +182,12 @@ func listStoreHandler(sess *listSession) {
 		if inMsg.code == smClose {
 			break
 		}
-		if inMsg.code == smMsg && inMsg.key != interruptedKey {
+		if inMsg.code != smMsg {
+			continue
+		}
+		if sess.dicts {
+			sess.list = append(sess.list, map[string]interface{}{inMsg.key: inMsg.value})
+		} else if inMsg.key != interruptedKey {
 			sess.list = append(sess.list, inMsg.value)
 		}
 	}
@@ -191,12 +197,13 @@ func listStoreHandler(sess *listSession) {
 }
 
 // OpenList creates a new list storage session.
-func (sess *storageSession) OpenList(key string) (SessionOutput, error) {
+func (sess *storageSession) OpenList(key string, dicts bool) (SessionOutput, error) {
 	ret := &listSession{}
 	ret.storageSession = *newStorageSession(sess.confKey+"."+key, sess.isState)
 	ret.parentSession, _ = retainStorageSession(sess)
 	ret.startTimestamp = time.Now()
 	ret.key = key
+	ret.dicts = dicts
 	ret.list = make([]interface{}, 0, 10)
 	go listStoreHandler(ret)
 	return ret, nil

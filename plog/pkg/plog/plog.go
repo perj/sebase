@@ -98,6 +98,15 @@ func (ctx *Plog) OpenList(key string) *Plog {
 	return ctx.openSub([]string{key}, plogproto.CtxType_list)
 }
 
+// OpenListOfDicts opens a sub-context list. Once this and any sub-contexts to
+// it are closed, a list will be logged in the parent plog, where each element
+// is a dictionary with a single element, the key value pair given to Log*.
+// This context type is useful for putting logs in a sub-key but does drop the
+// timestamps of the individual messages.
+func (ctx *Plog) OpenListOfDicts(key string) *Plog {
+	return ctx.openSub([]string{key}, plogproto.CtxType_list_of_dicts)
+}
+
 func (ctx *Plog) openSub(key []string, ctype plogproto.CtxType) *Plog {
 	if ctx == nil {
 		return nil

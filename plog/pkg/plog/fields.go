@@ -3,6 +3,7 @@
 package plog
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -25,11 +26,13 @@ type Fields = slog.KV
 // major version.
 type TypeLogger interface {
 	With(kvs ...interface{}) TypeLogger
+	Ctx(ctx context.Context) TypeLogger
 
 	Msg(msg string)
 	Msgf(format string, value ...interface{})
 
 	LogMsg(msg string, kvs ...interface{})
+	CtxMsg(ctx context.Context, msg string, kvs ...interface{})
 
 	Print(value ...interface{})
 	Printf(format string, value ...interface{})
@@ -47,12 +50,14 @@ type TypeLogger interface {
 // major version.
 type Logger interface {
 	With(kvs ...interface{}) Logger
+	Ctx(ctx context.Context) Logger
 
 	Type(key string) TypeLogger
 
 	Log(key string, value interface{}) error
 	LogDict(key string, kvs ...interface{}) error
 	LogMsg(key string, msg string, kvs ...interface{})
+	CtxMsg(ctx context.Context, key string, msg string, kvs ...interface{})
 
 	LevelPrint(lvl Level, value ...interface{})
 	LevelPrintf(lvl Level, format string, value ...interface{})
@@ -77,9 +82,9 @@ type Logger interface {
 // WithFields can be used to create Loggers with preset fields.
 // If the Log function on the returned interface is used with
 // a map[string]interface{} value then the fields are merged with that map,
-// otherwise the value is put in the "msg" key in a dictionary with the
-// fields. LogDict and LogMsg are wrappers for Log with a map[string]interface{}.
-// The latter adds the msg argument with the "msg" key.
+// otherwise the logged value is put in the "msg" key in a dictionary with the
+// fields. LogDict and LogMsg are wrappers for Log with a
+// map[string]interface{}. The latter adds the msg argument with the "msg" key.
 //
 // This function logs to Default if non-nil otherwise to FallbackWriter.
 //
@@ -118,26 +123,28 @@ func (plog *Plog) With(kvs ...interface{}) Logger {
 }
 
 func (f *fielder) With(kvs ...interface{}) Logger {
-	return newFielder(f.fields, slog.KVsMap(kvs...), f.Ctx, f.fallback)
+	return newFielder(f.fields, slog.CtxKVsMap(f.cctx, kvs...), f.logger, f.fallback)
 }
 
-func newFielder(farr []map[string]interface{}, f Fields, ctx *Plog, fallback bool) *fielder {
+func newFielder(farr []map[string]interface{}, f Fields, logger ContextLogger, fallback bool) *fielder {
 	newfarr := make([]map[string]interface{}, len(farr)+1)
 	if farr != nil {
 		copy(newfarr, farr)
 	}
-	if f != nil {
+	if len(f) > 0 {
 		newfarr[len(farr)] = f
 	} else {
 		newfarr = newfarr[:len(farr)]
 	}
-	return &fielder{newfarr, ctx, fallback}
+	return &fielder{newfarr, logger, fallback, nil}
 }
 
 type fielder struct {
 	fields   []map[string]interface{}
-	Ctx      *Plog
+	logger   ContextLogger
 	fallback bool
+
+	cctx context.Context
 }
 
 func (f *fielder) flatten(m map[string]interface{}) map[string]interface{} {
@@ -154,7 +161,7 @@ func (f *fielder) flatten(m map[string]interface{}) map[string]interface{} {
 }
 
 func (f *fielder) Log(key string, value interface{}) error {
-	if f.Ctx == nil && !f.fallback {
+	if f.logger == nil && !f.fallback {
 		return nil
 	}
 	m, ok := value.(map[string]interface{})
@@ -164,8 +171,8 @@ func (f *fielder) Log(key string, value interface{}) error {
 		}
 	}
 	value = f.flatten(m)
-	if f.Ctx != nil {
-		return f.Ctx.Log(key, value)
+	if f.logger != nil {
+		return f.logger.Log(key, value)
 	}
 	jw, err := json.Marshal(value)
 	if err != nil {
@@ -176,17 +183,17 @@ func (f *fielder) Log(key string, value interface{}) error {
 }
 
 func (f *fielder) LogDict(key string, kvs ...interface{}) error {
-	if f.Ctx == nil && !f.fallback {
+	if f.logger == nil && !f.fallback {
 		return nil
 	}
-	return f.Log(key, slog.KVsMap(kvs...))
+	return f.Log(key, slog.CtxKVsMap(f.cctx, kvs...))
 }
 
 func (f *fielder) LogMsg(key, msg string, kvs ...interface{}) {
-	if f.Ctx == nil && !f.fallback {
+	if f.logger == nil && !f.fallback {
 		return
 	}
-	m := slog.KVsMap(kvs...)
+	m := slog.CtxKVsMap(f.cctx, kvs...)
 	m["msg"] = msg
 	errWrap(f.Log, key, m)
 }
@@ -195,7 +202,7 @@ func (f *fielder) LevelPrint(lvl Level, value ...interface{}) {
 	if lvl > SetupLevel {
 		return
 	}
-	if f.Ctx == nil && !f.fallback {
+	if f.logger == nil && !f.fallback {
 		return
 	}
 	f.Log(lvl.Code(), fmt.Sprint(value...))
@@ -205,7 +212,7 @@ func (f *fielder) LevelPrintf(lvl Level, format string, value ...interface{}) {
 	if lvl > SetupLevel {
 		return
 	}
-	if f.Ctx == nil && !f.fallback {
+	if f.logger == nil && !f.fallback {
 		return
 	}
 	f.Log(lvl.Code(), fmt.Sprintf(format, value...))
@@ -295,7 +302,7 @@ func (l Level) With(kvs ...interface{}) TypeLogger {
 }
 
 func (f *typeFielder) With(kvs ...interface{}) TypeLogger {
-	return &typeFielder{newFielder(f.fields, slog.KVsMap(kvs...), f.Ctx, f.fallback), f.key}
+	return &typeFielder{newFielder(f.fields, slog.CtxKVsMap(f.cctx, kvs...), f.logger, f.fallback), f.key}
 }
 
 // Type create a TypeLogger for this context and key. Fields can then

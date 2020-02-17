@@ -173,3 +173,22 @@ func TestOpenList(t *testing.T) {
 		t.Errorf("Didn't get list hello, got %s", v.Open.String())
 	}
 }
+
+func TestOpenListOfDicts(t *testing.T) {
+	os.Setenv("PLOG_SOCKET", testSock)
+	defer os.Unsetenv("PLOG_SOCKET")
+
+	testPlogCh = make(chan plogproto.Plog, 2)
+	testN = 2
+	ctx := NewPlogLog("testapp")
+	defer ctx.Close()
+	<-testPlogCh
+	dctx := ctx.OpenListOfDicts("foo")
+	defer dctx.Close()
+	v := <-testPlogCh
+	pid := uint64(1) // Fixed value for simpler testing
+	v.Open.ParentCtxId = &pid
+	if v.Open.String() != `ctxtype:list_of_dicts key:"foo" parent_ctx_id:1 ` {
+		t.Errorf("Didn't get list hello, got %s", v.Open.String())
+	}
+}

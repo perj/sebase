@@ -58,22 +58,24 @@ func checkFatal(t testing.TB, err error) {
 }
 
 func expectLog(t testing.TB, expect []string) {
+	t.Helper()
 	for _, expected := range expect {
 		if !logScanner.Scan() {
 			t.Fatal(logScanner.Err())
 		}
 		if logScanner.Text() != expected {
-			_, file, line, _ := runtime.Caller(2)
-			t.Error(file, ":", line, ":", logScanner.Text(), "!=", expected)
+			t.Error(logScanner.Text(), "!=", expected)
 		}
 	}
 }
 
 func checkLog(t testing.TB, prog, key, value string) {
+	t.Helper()
 	expectLog(t, []string{"---", prog, key, value})
 }
 
 func checkLogAnyValue(t *testing.T, prog, level string, values []string) int {
+	t.Helper()
 	expectLog(t, []string{"---", prog, level})
 
 	if !logScanner.Scan() {
@@ -199,6 +201,27 @@ func TestList(t *testing.T) {
 	checkLog(t, "trans", "connections", `["1","2"]`)
 }
 
+func TestListOfDicts(t *testing.T) {
+	lconn := testConnect()
+	defer lconn.Close()
+
+	lID := hello(t, lconn, plogproto.CtxType_log, 0, "testapp")
+
+	tID := hello(t, lconn, plogproto.CtxType_list_of_dicts, lID, "log")
+
+	if err := lconn.SendKeyValue(tID, "INFO", []byte(`"info"`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := lconn.SendKeyValue(tID, "DEBUG", []byte(`"debug"`)); err != nil {
+		t.Fatal(err)
+	}
+
+	goodbye(t, lconn, lID)
+	goodbye(t, lconn, tID)
+
+	checkLog(t, "testapp", "log", `[{"INFO":"info"},{"DEBUG":"debug"}]`)
+}
+
 func TestTransaction(t *testing.T) {
 	lconn := testConnect()
 	defer lconn.Close()
@@ -216,7 +239,7 @@ func TestTransaction(t *testing.T) {
 	lconn.SendKeyValue(tID, "control", []byte(`true`))
 	lconn.SendKeyValue(tID, "tptr", []byte(`"0xba7390"`))
 
-	tdID := hello(t, lconn, plogproto.CtxType_list, tID, "debug")
+	tlID := hello(t, lconn, plogproto.CtxType_list_of_dicts, tID, "log")
 
 	iID := hello(t, lconn, plogproto.CtxType_list, tID, "input")
 	lconn.SendKeyValue(iID, "", []byte(`"cmd:transaction"`))
@@ -225,17 +248,17 @@ func TestTransaction(t *testing.T) {
 	lconn.SendKeyValue(iID, "", []byte(`"end"`))
 	goodbye(t, lconn, iID)
 
-	lconn.SendKeyValue(tdID, "", []byte(`"verify_parameters: phase 0, pending 0"`))
-	lconn.SendKeyValue(tdID, "", []byte(`"starting validator v_bool for transinfo"`))
-	lconn.SendKeyValue(tdID, "", []byte(`"ending validator for transinfo"`))
+	lconn.SendKeyValue(tlID, "debug", []byte(`"verify_parameters: phase 0, pending 0"`))
+	lconn.SendKeyValue(tlID, "debug", []byte(`"starting validator v_bool for transinfo"`))
+	lconn.SendKeyValue(tlID, "info", []byte(`"ending validator for transinfo"`))
 
 	lconn.SendKeyValue(tID, "info", []byte(`["Logging temporarily disabled."]`))
 
-	goodbye(t, lconn, tdID)
+	goodbye(t, lconn, tlID)
 	goodbye(t, lconn, tID)
 
 	// Looks like dicts are sorted, so this should work. Not that pretty though.
-	checkLog(t, "trans", "transaction", `{"control":true,"debug":["verify_parameters: phase 0, pending 0","starting validator v_bool for transinfo","ending validator for transinfo"],"info":["Logging temporarily disabled."],"input":["cmd:transaction","backends:1","commit:1","end"],"remote_addr":"::1","tptr":"0xba7390"}`)
+	checkLog(t, "trans", "transaction", `{"control":true,"info":["Logging temporarily disabled."],"input":["cmd:transaction","backends:1","commit:1","end"],"log":[{"debug":"verify_parameters: phase 0, pending 0"},{"debug":"starting validator v_bool for transinfo"},{"info":"ending validator for transinfo"}],"remote_addr":"::1","tptr":"0xba7390"}`)
 
 	lconn.SendKeyValue(lID, "INFO", []byte(`"command thread event dispatch exited because events depleted"`))
 	checkLog(t, "trans", "INFO", `"command thread event dispatch exited because events depleted"`)
