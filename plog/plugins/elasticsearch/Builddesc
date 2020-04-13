@@ -1,6 +1,8 @@
 GOMODULE(elasticsearch
+	enabled::!nocgo[]
 	destdir[lib/plogd/plugins]
 )
 
 GOTEST(sebase-plog-elasticsearch
+	enabled::!nocgo[]
 )

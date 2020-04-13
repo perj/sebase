@@ -31,4 +31,7 @@ LIB(sebase-util
 	libs::linux[
 		bsd
 	]
+	srcopts::gcc[
+		aes.c:-Wno-stringop-truncation
+	]
 )
