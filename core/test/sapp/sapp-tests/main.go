@@ -11,6 +11,7 @@ import (
 	"net/http/httptrace"
 	"os"
 	"os/exec"
+	"runtime"
 
 	"github.com/schibsted/sebase/core/pkg/fd_pool"
 	"github.com/schibsted/sebase/core/pkg/sapp"
@@ -21,7 +22,9 @@ var app sapp.Sapp
 const dialDomain = "foobar"
 const bodyOk = "Hello, world!\n"
 const bodyDenied = "Forbidden by ACL\n"
-const getFailLog = "client.Do failed: Get https://sapp-test-server-log.foobar:8080/panic: EOF"
+const getFailLog113 = "client.Do failed: Get https://sapp-test-server-log.foobar:8080/panic: EOF"
+
+var getFailLog = `client.Do failed: Get "https://sapp-test-server-log.foobar:8080/panic": EOF`
 
 func main() {
 	app.Flags("", true)
@@ -30,6 +33,10 @@ func main() {
 	}
 
 	app.Pool.SetDialDomain(dialDomain)
+
+	if runtime.Version() < "go1.14" {
+		getFailLog = getFailLog113
+	}
 
 	var tests = []struct {
 		service  string

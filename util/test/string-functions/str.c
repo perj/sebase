@@ -53,7 +53,7 @@ test_p(void) {
 
 	if ((res = strstrptrs(haystack, needle, needle + strlen(needle), ":")) != NULL)
 		return 0;
-	fprintf(stderr, "Non-match failed (%s)\n", res);
+	fprintf(stderr, "Non-match failed\n");
 	return 1;
 }
 
