@@ -94,8 +94,9 @@ utf8_decode(char *dst, int *dstlen, const char *str, int slen, UConverter *utf8_
 size_t strlen_utf8(const char *str) {
 	size_t n = 0, i;
 	size_t ln = strlen(str);
-	for (i = 0 ; i < ln ; (U8_FWD_1(str, i, ln)) ) {
+	for (i = 0 ; i < ln ;  ) {
 		n++;
+		U8_FWD_1(str, i, ln);
 	}
 	return n;
 }
