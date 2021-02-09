@@ -193,6 +193,8 @@ func (w *OutputWriter) WriteMessage(ctx context.Context, message plogd.LogMessag
 		req.Type("_doc")
 	}
 	req.Doc(w.message(ctx, &message))
+	// Force source generation here to copy all needed data.
+	req.Source()
 
 	w.bulker.Add(req)
 }

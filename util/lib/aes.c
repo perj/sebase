@@ -27,8 +27,9 @@ generate_iv(unsigned char *dst, const char *src) {
 		gettimeofday(&tv, NULL);
 		snprintf((char*)dst, AES_BLOCK_SIZE, "%lx%lx", (long)tv.tv_sec, (long)tv.tv_usec);
 	} else {
-		/* This is supposed to be strncpy */
-		strncpy((char*) dst, src, AES_BLOCK_SIZE);
+		/* Could use strncpy here but newer glibc complains since it thinks it's unsafe. */
+		memset(dst, 0, AES_BLOCK_SIZE);
+		memcpy(dst, src, strnlen(src, AES_BLOCK_SIZE));
 	}
 }
 

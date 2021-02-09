@@ -9,7 +9,7 @@
 
 const char *appname;
 const char *type;
-const bool json;
+bool json;
 
 POPT_STRING("appname", NULL, &appname, "Appname to use. Defaults to the current user.");
 POPT_STRING("type", NULL, &type, "Message type to use. Defaults to log.");
